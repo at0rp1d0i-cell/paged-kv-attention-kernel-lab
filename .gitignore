@@ -1,0 +1,22 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+.DS_Store
+
+# Large/local experiment artifacts stay off GitHub.
+artifacts/
+results/
+profiles/
+*.nsys-rep
+*.qdrep
+*.ncu-rep
+*.sqlite
+*.csv.tmp
+

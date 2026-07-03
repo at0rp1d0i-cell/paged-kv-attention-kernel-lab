@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "paged-kv-attention-kernel-lab"
+version = "0.0.0"
+description = "Paged-KV attention kernel lab for LLM decode inference experiments."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "torch",
+    "triton; platform_system == 'Linux'",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "ruff>=0.5",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "gpu: requires a CUDA-capable GPU",
+]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
