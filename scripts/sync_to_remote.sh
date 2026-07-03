@@ -1,20 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REMOTE="${REMOTE:-autodl-pkv}"
-REMOTE_DIR="${REMOTE_DIR:-/root/paged-kv-attention-kernel-lab}"
+cat >&2 <<'MSG'
+sync_to_remote.sh is intentionally disabled.
 
-rsync -az --delete \
-  --exclude ".git/" \
-  --exclude ".venv/" \
-  --exclude "__pycache__/" \
-  --exclude ".pytest_cache/" \
-  --exclude ".ruff_cache/" \
-  --exclude ".DS_Store" \
-  --exclude "artifacts/" \
-  --exclude "results/" \
-  --exclude "profiles/" \
-  ./ "${REMOTE}:${REMOTE_DIR}/"
+GitHub is the source of truth for code. The AutoDL machine should update code with:
 
-echo "Synced local workspace to ${REMOTE}:${REMOTE_DIR}"
+  cd /root/paged-kv-attention-kernel-lab
+  git pull --ff-only
 
+Use scripts/sync_from_remote.sh only for pulling experiment outputs back to the local machine.
+MSG
+
+exit 2
