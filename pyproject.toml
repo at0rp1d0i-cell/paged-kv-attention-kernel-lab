@@ -9,12 +9,14 @@ description = "Paged-KV attention kernel lab for LLM decode inference experiment
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "torch",
-    "triton; platform_system == 'Linux'",
+    "numpy>=2.0",
+    "torch==2.8.0+cu128",
+    "triton==3.4.0; platform_system == 'Linux'",
 ]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
+    "ninja>=1.11",
     "pytest>=8",
     "ruff>=0.5",
 ]
@@ -33,3 +35,10 @@ addopts = "-ra"
 line-length = 100
 target-version = "py310"
 
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }

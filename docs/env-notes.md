@@ -31,9 +31,7 @@ Local validation:
 Local dev setup:
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install -e '.[dev]' --extra-index-url https://download.pytorch.org/whl/cpu
+UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple UV_HTTP_TIMEOUT=600 uv sync --locked --group dev
 bash scripts/run_tests.sh
 ```
 
@@ -42,15 +40,19 @@ bash scripts/run_tests.sh
 | Item | Value |
 | --- | --- |
 | Provider | AutoDL |
-| Instance type | TODO |
-| GPU | TODO |
-| GPU memory | TODO |
-| Driver | TODO |
-| CUDA runtime | TODO |
-| CUDA compiler / nvcc | TODO |
-| PyTorch | TODO |
-| PyTorch CUDA | TODO |
-| Triton | TODO |
+| Instance type | RTX 5090 container (`autodl-container-88e54ca00f-12d54101`) |
+| GPU | NVIDIA GeForce RTX 5090 |
+| GPU memory | 32607 MiB reported by `nvidia-smi`; 33668988928 bytes reported by PyTorch |
+| Compute capability | 12.0 |
+| Driver | 580.105.08 |
+| CUDA runtime | 13.0 reported by `nvidia-smi`; 12.8 used by PyTorch |
+| CUDA compiler / nvcc | 12.8, V12.8.93 |
+| PyTorch | 2.8.0+cu128 |
+| PyTorch CUDA | 12.8 |
+| Triton | 3.4.0 |
+| Python | 3.12.3 from uv-managed `.venv` |
+| Package manager | uv 0.11.26 |
+| Dev tools | pytest 9.1.1, ruff 0.15.20, ninja 1.13.0 |
 | FlashInfer | Not required in Week 0 |
 
 Commands:
@@ -77,22 +79,25 @@ PY
 
 | Check | Status | Notes |
 | --- | --- | --- |
-| PyTorch CUDA tensor op | TODO | TODO |
-| Triton vector add kernel | TODO | TODO |
-| CUDA extension compile | TODO | TODO |
-| NCU installed | TODO | TODO |
-| NCU counter permission | TODO | TODO |
+| PyTorch CUDA tensor op | Passed | `uv run python scripts/gpu_smoke.py` completed tensor op on NVIDIA GeForce RTX 5090. |
+| Triton vector add kernel | Passed | Triton 3.4.0 JIT compiled and launched vector-add kernel. |
+| CUDA extension compile | Passed | `torch.utils.cpp_extension.load` compiled and ran CUDA extension after installing `ninja`. |
+| CPU pytest | Passed | `bash scripts/run_tests.sh`: 1 test passed. |
+| Ruff lint | Passed | `uv run ruff check .`: all checks passed. |
+| NCU installed | Present | `/usr/local/cuda-12.8/bin/ncu`, Nsight Compute 2025.1.1.0. |
+| NCU counter permission | Blocked | `ERR_NVGPUCTRPERM` when wrapping `uv run python scripts/gpu_smoke.py`; `/proc/driver/nvidia/params` reports `RmProfilingAdminOnly: 1`. |
+| Profiling fallback | Enabled | Container-only permission means NCU counters are non-fatal; use CUDA events, `torch.profiler`, and analytical bandwidth. |
 
 Smoke command:
 
 ```bash
-python scripts/gpu_smoke.py
+uv run python scripts/gpu_smoke.py
 ```
 
 NCU command:
 
 ```bash
-ncu --set full --target-processes all python scripts/gpu_smoke.py
+ncu --set full --target-processes all uv run python scripts/gpu_smoke.py
 ```
 
 ## 4. NCU / Profiling Decision
@@ -100,13 +105,18 @@ ncu --set full --target-processes all python scripts/gpu_smoke.py
 Decision:
 
 ```text
-TODO: Use NCU in Week 4 / fallback to nsys + torch.profiler + analytical bandwidth model.
+Nsight Compute is installed but GPU performance counter access is blocked on this container.
+Use CUDA events for latency measurements now. For Week 4 profiling, either enable NVIDIA GPU
+performance counter permissions or fallback to torch.profiler + analytical bandwidth model.
+`nsys` is not installed in the current image.
 ```
 
 Evidence:
 
 ```text
-TODO: Paste short success summary or key error text, e.g. ERR_NVGPUCTRPERM.
+ncu --set full --target-processes all uv run python scripts/gpu_smoke.py
+==ERROR== ERR_NVGPUCTRPERM - The user does not have permission to access NVIDIA GPU Performance Counters on the target device 0.
+The smoke workload itself still completed: PyTorch CUDA ok, Triton vector add ok, CUDA extension compile/run ok.
 ```
 
 Fallback if NCU is unavailable:
@@ -122,23 +132,39 @@ effective_bandwidth = bytes_read / latency
 bandwidth_utilization = effective_bandwidth / hardware_peak_bandwidth
 ```
 
+Container-only permission note:
+
+```text
+The current user is root inside the container, but the host driver still restricts
+GPU performance counters. Treat ERR_NVGPUCTRPERM as expected on this machine.
+Do not block Week 1-3 correctness or benchmark harness work on NCU access.
+```
+
 ## 5. Version Pin Candidate
 
 Candidate environment:
 
 ```text
-python==TODO
-torch==TODO
-triton==TODO
-cuda==TODO
+uv==0.11.26
+python==3.12.3
+numpy>=2.0
+torch==2.8.0+cu128
+triton==3.4.0
+cuda runtime reported by torch==12.8
+cuda compiler==12.8, V12.8.93
+ninja==1.13.0
 ```
 
 Reason:
 
 ```text
-TODO: Keep the simplest combination that passed Triton smoke + CUDA extension compile.
+This is the simplest current uv-managed environment that passed import tests, CPU pytest, Ruff,
+PyTorch CUDA tensor op, Triton JIT launch, and CUDA extension compile/run.
 ```
 
 ## 6. Open Issues
 
-- TODO
+- `ncu` counter collection is blocked by `ERR_NVGPUCTRPERM`; needs host/container permission change for full Nsight Compute profiling.
+- `nsys` is not installed in the current image.
+- Project commands now use `uv sync --locked --group dev` and `uv run`; the earlier root/base conda `pip install -e '.[dev]'` path is superseded.
+- Use `UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple` for ordinary PyPI packages on this machine; PyTorch remains pinned to the explicit cu128 PyTorch index.

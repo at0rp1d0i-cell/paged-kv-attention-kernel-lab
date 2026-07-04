@@ -2,6 +2,21 @@
 
 > 暑期挑战项目提案：面向 LLM 推理 decode 阶段的 Paged KV Cache Attention 自定义算子、benchmark 与 profiling 实验室。
 
+## Quickstart
+
+本项目统一使用 `uv` 管理 Python 环境。当前机器普通 PyPI 包使用清华镜像，PyTorch CUDA wheel 固定走 `pyproject.toml` 中的 cu128 PyTorch index。
+
+```bash
+cd /root/paged-kv-attention-kernel-lab
+python -m pip install -U uv
+UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple UV_HTTP_TIMEOUT=600 uv sync --locked --group dev
+bash scripts/check_env.sh
+bash scripts/run_tests.sh
+uv run python scripts/gpu_smoke.py
+```
+
+当前容器内 `ncu` 能启动但不能读取 NVIDIA GPU performance counters（性能计数器）：`/proc/driver/nvidia/params` 显示 `RmProfilingAdminOnly: 1`，`ncu` probe 会返回 `ERR_NVGPUCTRPERM`。这不是项目阻塞项；在只有容器内权限时，profiling（性能剖析）默认 fallback（回退）到 CUDA events（CUDA 事件）测 latency（延迟）、`torch.profiler` 看 operator timeline（算子时间线）、analytical bandwidth model（解析带宽模型）估算 effective bandwidth（有效带宽）。
+
 ## 1. 项目定位
 
 这个项目是一个围绕真实 LLM inference infra 痛点设计的个人工程项目。
@@ -561,7 +576,7 @@ docs/lab-notes/
 控制：
 
 - Week 0 花几块钱先验证；
-- fallback：`nsys` + torch.profiler + 解析法带宽模型（理论读取量 / 实测 latency，对比峰值带宽）；
+- fallback：CUDA events + `torch.profiler` + 解析法带宽模型（理论读取量 / 实测 latency，对比峰值带宽）；如果 `nsys` 可用，再补 timeline；
 - profiling report 的论证不硬依赖 NCU。
 
 ### 风险 6: AI 生成代码掏空学习价值

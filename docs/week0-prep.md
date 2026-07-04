@@ -79,7 +79,9 @@ CI 初稿目标：
 推荐先运行：
 
 ```bash
-python scripts/gpu_smoke.py
+UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple UV_HTTP_TIMEOUT=600 uv sync --locked --group dev
+bash scripts/check_env.sh
+uv run python scripts/gpu_smoke.py
 ```
 
 再记录：
@@ -105,7 +107,7 @@ ncu --version || true
 对 smoke script 跑一次：
 
 ```bash
-ncu --set full --target-processes all python scripts/gpu_smoke.py
+ncu --set full --target-processes all uv run python scripts/gpu_smoke.py
 ```
 
 判定：
@@ -113,6 +115,8 @@ ncu --set full --target-processes all python scripts/gpu_smoke.py
 - 如果能输出 kernel 指标：Week 4 使用 NCU 做 profiling。
 - 如果出现 `ERR_NVGPUCTRPERM`：记录错误原文，Week 4 fallback 到 `nsys + torch.profiler + 解析法带宽模型`。
 - 如果 `ncu` 不存在：记录镜像缺失，先不在 Week 0 花太多时间修，除非安装成本很低。
+
+当前容器只有容器内权限时，`ERR_NVGPUCTRPERM` 不是阻塞项。默认启用 fallback：CUDA events 测 latency（延迟）、`torch.profiler` 看 timeline（时间线）、analytical bandwidth model（解析带宽模型）估算 effective bandwidth（有效带宽）。
 
 ## 4. Week 0 阅读 Timebox
 

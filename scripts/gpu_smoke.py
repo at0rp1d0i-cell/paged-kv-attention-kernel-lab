@@ -6,10 +6,13 @@ This script is intentionally small. It verifies:
 3. A minimal CUDA extension can compile and run.
 
 Run on the rented GPU machine:
-    python scripts/gpu_smoke.py
+    uv run python scripts/gpu_smoke.py
 
 Optionally profile it:
-    ncu --set full --target-processes all python scripts/gpu_smoke.py
+    ncu --set full --target-processes all uv run python scripts/gpu_smoke.py
+
+If NCU reports ERR_NVGPUCTRPERM inside a container, keep using this smoke test plus
+CUDA events / torch.profiler as the profiling fallback.
 """
 
 from __future__ import annotations
@@ -75,6 +78,12 @@ def check_cuda_extension() -> None:
     from torch.utils.cpp_extension import load
 
     print("\n== CUDA Extension Compile ==")
+    if torch.cuda.is_available() and not os.environ.get("TORCH_CUDA_ARCH_LIST"):
+        major, minor = torch.cuda.get_device_capability()
+        arch = f"{major}.{minor}"
+        os.environ["TORCH_CUDA_ARCH_LIST"] = arch
+        print("TORCH_CUDA_ARCH_LIST:", arch)
+
     source = r'''
 #include <torch/extension.h>
 
@@ -116,7 +125,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
 
 
 def main() -> None:
-    os.environ.setdefault("TORCH_CUDA_ARCH_LIST", "")
     check_torch_cuda()
     check_triton_vector_add()
     check_cuda_extension()
