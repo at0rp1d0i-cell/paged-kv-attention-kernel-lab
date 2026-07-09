@@ -47,5 +47,39 @@ def make_random_block_tables(
         ``context_lens`` defines the valid logical block range.
     """
 
-    _ = (context_lens, block_size, seed, device)
-    raise NotImplementedError("Week 1 TODO: implement make_random_block_tables")
+    output_device = context_lens.device if device is None else torch.device(device)
+    blocks_per_seq = blocks_per_sequence(context_lens, block_size).to(torch.long)
+    batch_size = int(context_lens.shape[0])
+    max_blocks_per_seq = int(blocks_per_seq.max().item()) if batch_size > 0 else 0
+    total_required_blocks = int(blocks_per_seq.sum().item())
+
+    # Allocate spare physical blocks so valid ids are not just a dense 0..N-1 prefix.
+    # Tests can fill the spare blocks with garbage to catch accidental wrong reads.
+    spare_blocks = 1 if total_required_blocks > 0 else 0
+    num_physical_blocks = total_required_blocks + spare_blocks
+
+    block_tables = torch.full(
+        (batch_size, max_blocks_per_seq),
+        -1,
+        dtype=torch.long,
+        device=output_device,
+    )
+
+    if total_required_blocks == 0:
+        return block_tables, num_physical_blocks
+
+    generator = torch.Generator(device="cpu")
+    if seed is not None:
+        generator.manual_seed(seed)
+
+    physical_ids = torch.randperm(num_physical_blocks, generator=generator)[:total_required_blocks]
+    cursor = 0
+    for b, required_blocks in enumerate(blocks_per_seq.tolist()):
+        if required_blocks == 0:
+            continue
+        block_tables[b, :required_blocks] = physical_ids[cursor : cursor + required_blocks].to(
+            output_device
+        )
+        cursor += required_blocks
+
+    return block_tables, num_physical_blocks
