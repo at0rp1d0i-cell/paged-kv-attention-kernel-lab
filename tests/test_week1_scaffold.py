@@ -81,3 +81,39 @@ def test_block_table_generator_contract_or_todo() -> None:
 
     assert block_tables.shape == (3, 2)
     assert num_physical_blocks >= 4
+
+
+def test_block_table_generator_outputs_valid_random_mapping() -> None:
+    context_lens = torch.tensor([0, 1, 16, 17])
+
+    block_tables, num_physical_blocks = make_random_block_tables(
+        context_lens,
+        block_size=16,
+        seed=123,
+    )
+    repeated_block_tables, repeated_num_physical_blocks = make_random_block_tables(
+        context_lens,
+        block_size=16,
+        seed=123,
+    )
+
+    assert block_tables.shape == (4, 2)
+    assert num_physical_blocks == 5
+    assert repeated_num_physical_blocks == num_physical_blocks
+    torch.testing.assert_close(block_tables, repeated_block_tables)
+
+    required_blocks = blocks_per_sequence(context_lens, block_size=16)
+    valid_ids = []
+    for b, num_required in enumerate(required_blocks.tolist()):
+        valid_entries = block_tables[b, :num_required]
+        unused_entries = block_tables[b, num_required:]
+
+        assert torch.all(unused_entries == -1)
+        if num_required == 0:
+            continue
+
+        assert torch.all(valid_entries >= 0)
+        assert torch.all(valid_entries < num_physical_blocks)
+        valid_ids.extend(valid_entries.tolist())
+
+    assert len(valid_ids) == len(set(valid_ids))
