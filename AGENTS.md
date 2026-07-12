@@ -60,6 +60,14 @@
 - 避免临时补丁掩盖根因；优先修正接口语义、layout（布局）定义、mask（掩码）逻辑和数值稳定性问题。
 - 不做无关重构；每次整理都应服务于当前功能分节。
 
+## 命名与语义优先
+
+- 新增或重命名文件、测试、函数和文档标题时，优先表达语义角色，而不是学习周次或临时脚手架状态。
+- 推荐使用 `reference_contracts`、`reference_testing`、`triton_decode_v0` 这类描述职责的名称；避免把新产物命名为 `week1_scaffold`、`week2_tmp` 之类时间或临时状态。
+- 只有 roadmap（路线图）、lab notes（实验笔记）和明确按时间组织的计划文档才保留 `Week N` 表达。
+- 文档引用应跟随语义化名称同步更新；如果旧文件名只是历史真实路径，可以保留引用，但要优先考虑重命名为更清楚的语义名称。
+- 测试文件名应说明测试职责，例如 contract tests（契约测试）、semantic tests（语义测试）、alignment tests（对齐测试）或 benchmark tests（基准测试）。
+
 ## 实现规则
 
 - Python package（Python 包）代码放在 `src/paged_kv_attention/`。
@@ -105,6 +113,11 @@
   - benchmark harness + CSV output；
   - profiling report + plots。
 - 每个功能分节完成后再整理风格、补测试、更新文档，并准备 commit（提交）。
+- commit 拆分以语义为主：功能实现、测试补充、文档整理、命名清理应在合理情况下分开提交，而不是按时间顺序或文件数量机械拆分。
+- Git 历史同时承担学习路线记录。到达一个可复述、可验证的 learning checkpoint（学习整理节点）时，再集中整理工作树和准备提交。
+- checkpoint 优先使用以下类型：`concept`（概念和推导成立）、`kernel`（核心实现首次跑通）、`correctness`（边界测试与 reference 对齐）、`performance`（benchmark/profiling 得出可解释结论）。
+- 一个 checkpoint 可以包含 1-3 个语义 commit，例如实现、测试和笔记；这些 commit 应共同讲清楚该节点解决了什么、如何验证、还剩什么限制。
+- commit subject（提交标题）描述真实技术内容，例如 `Implement continuous dense Triton decode attention`，不使用 `week2 progress`、`v0 done` 等时间或临时阶段名称。
 - 不把半成品核心逻辑伪装成完成状态；如果功能只完成一部分，要明确标注 remaining work（剩余工作）。
 - 不自动 commit；用户确认后再执行提交。
 
