@@ -35,8 +35,8 @@ GPU correctness tests（GPU 正确性测试）在 RTX 5090 上与 FP32 dense ref
 `context_len` 后的 garbage values。
 
 ```text
-pytest -q tests/test_triton_decode.py: 3 passed
-bash scripts/run_tests.sh:             14 passed, 3 deselected
+pytest -q tests/test_triton_decode.py: 6 passed
+bash scripts/run_tests.sh:             14 passed, 6 deselected
 ```
 
 ## 当前理解
@@ -60,11 +60,29 @@ continuous dense Triton decode correctness
 节点成立的证据：核心 kernel 可 launch、边界 mask 通过 garbage-value 测试、输出与 FP32
 dense reference 对齐。Git 整理按实现、测试、笔记的语义拆分，不使用 `v0 done` 等临时名称。
 
+第二个节点定义为：
+
+```text
+paged Triton decode correctness
+```
+
+这个节点只改变 K/V 的寻址：logical token 先拆成 logical block 和 slot，再通过 block table
+映射到 physical block。attention 数学、online softmax、program mapping 和输出布局均复用
+连续版本。随机 block table 与 garbage block/slot 测试证明 kernel 没有误读无效物理位置。
+
+## 方向感受
+
+Triton 的基础语法比预想中直接：已有 PyTorch 数学推导和 shape trace 后，`tl.load`、
+reduction、mask 和 online softmax 可以逐步翻译。当前感受到的主要难度不是语法，而是
+pointer arithmetic 和边界语义。
+
+需要保留判断：正确 kernel 只是第一步。后续 program mapping、coalesced memory access
+（合并访存）、寄存器压力、occupancy、tile 参数与 profiling 才是性能工程的核心难点。
+
 ## 下一步与剩余风险
 
-- 先分析连续 KV kernel 的限制和性能特征，再加入 block table 间接寻址。
-- paged 版本保持 online softmax 数学不变，只替换 logical token 到 physical block/slot 的
-  地址计算。
 - 后续补 `head_dim=64`、BF16、`context_len=0` 和更完整的 tolerance coverage。
+- 先做一个最小 benchmark，确认 dense/paged kernel 的延迟量级和 context scaling。
+- 分析 block size、block_t、batch 和 context length 对并行度与访存的影响。
 - split-KV 是否值得实现，要由长 context benchmark（基准测试）和 profiling（性能剖析）
   证明。
