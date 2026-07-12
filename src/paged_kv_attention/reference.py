@@ -1,10 +1,11 @@
-"""Week 1 PyTorch reference implementations.
+"""PyTorch reference implementations.
 
 The learning order is:
 
 1. Implement ``dense_decode_attention`` as the FP32 ground truth.
 2. Implement ``paged_decode_attention`` by matching dense semantics exactly.
 3. Use tests to prove random block-table order and garbage slots do not affect output.
+4. Implement ``dense_decode_attention_online`` as the bridge to Triton.
 
 The core loops are intentionally left as TODOs for the first learning pass.
 """
@@ -84,7 +85,7 @@ def dense_decode_attention(
     for b in range(B):
         valid_len = int(context_lens[b].item())
 
-        q_b = q_f[b]              # [H, D]
+        q_b = q_f[b]  # [H, D]
         k_b = k_f[b, :valid_len]  # [T, H, D], T = valid_len
         v_b = v_f[b, :valid_len]  # [T, H, D]
 
@@ -97,13 +98,134 @@ def dense_decode_attention(
 
         # Softmax over the token dimension: [H, T] -> [H, T].
         probs = torch.softmax(scores, dim=-1)  # [H, T]
-        v_by_head = v_b.transpose(0, 1)        # [T, H, D] -> [H, T, D]
+        v_by_head = v_b.transpose(0, 1)  # [T, H, D] -> [H, T, D]
 
         # probs.unsqueeze(-1): [H, T, 1]
         # v_by_head:           [H, T, D]
         # 相乘后:               [H, T, D]
         # sum(dim=1):          [H, D]
         out[b] = (probs.unsqueeze(-1) * v_by_head).sum(dim=1)
+
+    return out
+
+
+def dense_decode_attention_online(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    context_lens: torch.Tensor,
+    *,
+    block_size: int,
+    scale: float | None = None,
+) -> torch.Tensor:
+    """Compute dense decode attention with block-wise online softmax.
+
+    This is the Week 2 learning bridge between the dense PyTorch reference and
+    the first Triton decode kernel. It intentionally keeps the same dense K/V
+    layout as ``dense_decode_attention`` and changes only the softmax algorithm:
+    instead of materializing all scores for one sequence, it should stream over
+    token blocks and maintain running ``m``, ``l``, and ``acc``.
+
+    Args:
+        q: Query tensor with shape ``[batch, num_heads, head_dim]``.
+        k: Dense key tensor with shape ``[batch, max_context_len, num_heads, head_dim]``.
+        v: Dense value tensor with shape ``[batch, max_context_len, num_heads, head_dim]``.
+        context_lens: Valid context length per batch item, shape ``[batch]``.
+        block_size: Number of tokens to process per online-softmax step.
+        scale: Optional attention scale. Defaults to ``1 / sqrt(head_dim)``.
+
+    Returns:
+        FP32 tensor with shape ``[batch, num_heads, head_dim]``.
+
+    Correctness target:
+        Match ``dense_decode_attention`` in FP32 for the same inputs. The core
+        update should maintain:
+
+        - ``m``: running max, shape ``[num_heads]``.
+        - ``l``: running exp sum, shape ``[num_heads]``.
+        - ``acc``: running weighted value sum, shape ``[num_heads, head_dim]``.
+    """
+
+    if q.ndim != 3:
+        raise ValueError("q must have shape [batch, num_heads, head_dim]")
+    if k.ndim != 4:
+        raise ValueError("k must have shape [batch, max_context_len, num_heads, head_dim]")
+    if v.ndim != 4:
+        raise ValueError("v must have shape [batch, max_context_len, num_heads, head_dim]")
+    if block_size <= 0:
+        raise ValueError("block_size must be positive")
+
+    B, H, D = q.shape
+    k_B, S, k_H, k_D = k.shape
+    v_B, v_S, v_H, v_D = v.shape
+
+    if (k_B, k_H, k_D) != (B, H, D):
+        raise ValueError("k must have shape [batch, max_context_len, num_heads, head_dim]")
+    if (v_B, v_S, v_H, v_D) != (B, S, H, D):
+        raise ValueError("v must have the same shape as k")
+    if context_lens.ndim != 1 or context_lens.shape[0] != B:
+        raise ValueError("context_lens must have shape [batch]")
+    if torch.any(context_lens < 0):
+        raise ValueError("context_lens must be non-negative")
+    if torch.any(context_lens > S):
+        raise ValueError("context_lens cannot exceed max_context_len")
+
+    if scale is None:
+        scale = default_attention_scale(D)
+
+    q_f = q.to(torch.float32)
+    k_f = k.to(torch.float32)
+    v_f = v.to(torch.float32)
+
+    out = torch.empty((B, H, D), dtype=torch.float32, device=q.device)
+
+    for b in range(B):
+        valid_len = int(context_lens[b].item())
+
+        if valid_len == 0:
+            out[b].zero_()
+            continue
+
+        q_b = q_f[b]  # [H, D]
+
+        # Running online-softmax state, one independent stream per attention head.
+        running_max = torch.full((H,), -torch.inf, dtype=torch.float32, device=q.device)
+        running_sum = torch.zeros((H,), dtype=torch.float32, device=q.device)
+        accumulator = torch.zeros((H, D), dtype=torch.float32, device=q.device)
+
+        for start in range(0, valid_len, block_size):
+            end = min(start + block_size, valid_len)
+            k_tile = k_f[b, start:end]  # [TILE, H, D]
+            v_tile = v_f[b, start:end]  # [TILE, H, D]
+
+            # k_tile:             [TILE, H, D]
+            # q_b.unsqueeze(0):   [1, H, D]
+            # scores_tile:        [H, TILE]
+            scores_tile = (k_tile * q_b.unsqueeze(0)).sum(dim=-1).transpose(0, 1) * scale
+
+            # Local tile summary in its own max scale.
+            m_tile = scores_tile.max(dim=-1).values  # [H]
+            p_tile = torch.exp(scores_tile - m_tile.unsqueeze(-1))  # [H, TILE]
+            l_tile = p_tile.sum(dim=-1)  # [H]
+
+            # p_tile.unsqueeze(-1): [H, TILE, 1]
+            # v_tile_by_head:       [H, TILE, D]
+            # acc_tile:             [H, D]
+            v_tile_by_head = v_tile.transpose(0, 1)
+            acc_tile = (p_tile.unsqueeze(-1) * v_tile_by_head).sum(dim=1)
+
+            # Update running max, exp sum, and weighted value sum.
+            m_new = torch.maximum(running_max, m_tile)  # [H]
+            old_scale = torch.exp(running_max - m_new)  # [H]
+            tile_scale = torch.exp(m_tile - m_new)  # [H]
+
+            running_sum = running_sum * old_scale + l_tile * tile_scale  # [H]
+            accumulator = accumulator * old_scale.unsqueeze(-1) + acc_tile * tile_scale.unsqueeze(
+                -1
+            )  # [H, D]
+            running_max = m_new
+
+        out[b] = accumulator / running_sum.unsqueeze(-1)
 
     return out
 
@@ -207,7 +329,7 @@ def paged_decode_attention(
 
         k_b = torch.stack(k_tokens, dim=0)  # [T, H, D]
         v_b = torch.stack(v_tokens, dim=0)  # [T, H, D]
-        q_b = q_f[b]                        # [H, D]
+        q_b = q_f[b]  # [H, D]
 
         # q_b.unsqueeze(0): [1, H, D]
         # k_b:              [T, H, D]
@@ -218,7 +340,7 @@ def paged_decode_attention(
 
         # Softmax over the token dimension: [H, T] -> [H, T].
         probs = torch.softmax(scores, dim=-1)  # [H, T]
-        v_by_head = v_b.transpose(0, 1)        # [T, H, D] -> [H, T, D]
+        v_by_head = v_b.transpose(0, 1)  # [T, H, D] -> [H, T, D]
 
         # probs.unsqueeze(-1): [H, T, 1]
         # v_by_head:           [H, T, D]
@@ -227,4 +349,3 @@ def paged_decode_attention(
         out[b] = (probs.unsqueeze(-1) * v_by_head).sum(dim=1)
 
     return out
-

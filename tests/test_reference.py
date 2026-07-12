@@ -1,7 +1,11 @@
 import torch
 
 from paged_kv_attention.block_table import make_random_block_tables
-from paged_kv_attention.reference import dense_decode_attention, paged_decode_attention
+from paged_kv_attention.reference import (
+    dense_decode_attention,
+    dense_decode_attention_online,
+    paged_decode_attention,
+)
 
 
 def test_dense_decode_attention_matches_hand_checked_case() -> None:
@@ -301,3 +305,41 @@ def test_paged_decode_attention_matches_dense_with_generated_block_tables() -> N
     )
 
     torch.testing.assert_close(paged_out, dense_out)
+
+
+def test_dense_decode_attention_online_matches_dense_across_tiles() -> None:
+    generator = torch.Generator().manual_seed(17)
+    batch_size = 3
+    max_context_len = 9
+    num_heads = 2
+    head_dim = 8
+
+    q = torch.randn(batch_size, num_heads, head_dim, generator=generator, dtype=torch.float16)
+    k = torch.randn(
+        batch_size,
+        max_context_len,
+        num_heads,
+        head_dim,
+        generator=generator,
+        dtype=torch.float16,
+    )
+    v = torch.randn(
+        batch_size,
+        max_context_len,
+        num_heads,
+        head_dim,
+        generator=generator,
+        dtype=torch.float16,
+    )
+    context_lens = torch.tensor([1, 5, 9])
+
+    dense_out = dense_decode_attention(q, k, v, context_lens)
+    online_out = dense_decode_attention_online(
+        q,
+        k,
+        v,
+        context_lens,
+        block_size=4,
+    )
+
+    torch.testing.assert_close(online_out, dense_out, rtol=1e-5, atol=1e-5)
