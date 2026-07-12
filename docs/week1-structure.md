@@ -9,7 +9,7 @@ Triton kernel（Triton 内核）。本周不追求性能，正确性标准是和
 - `src/paged_kv_attention/layouts.py`: 记录 Week 1 tensor layout（张量布局）和静态维度约束。
 - `src/paged_kv_attention/reference.py`: 放 dense reference 与 paged reference。
 - `src/paged_kv_attention/block_table.py`: 放 block table（块表）相关 helper（辅助函数）和 generator（生成器）。
-- `tests/test_week1_scaffold.py`: 当前脚手架测试，允许核心函数暂时抛出 `NotImplementedError`。
+- `tests/test_reference_contracts.py`: reference 阶段的接口和 helper contract（契约）测试。
 
 ## 推荐实现顺序
 

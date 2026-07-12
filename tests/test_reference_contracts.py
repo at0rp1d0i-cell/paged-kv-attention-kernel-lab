@@ -5,7 +5,7 @@ from paged_kv_attention.layouts import DecodeLayout
 from paged_kv_attention.reference import dense_decode_attention, paged_decode_attention
 
 
-def test_decode_layout_week1_contract() -> None:
+def test_decode_layout_reference_stage_contract() -> None:
     layout = DecodeLayout(
         batch_size=2,
         max_context_len=17,
@@ -20,7 +20,7 @@ def test_decode_layout_week1_contract() -> None:
     assert layout.max_blocks_per_seq == 2
 
 
-def test_blocks_per_sequence_handles_week1_boundaries() -> None:
+def test_blocks_per_sequence_handles_reference_stage_boundaries() -> None:
     context_lens = torch.tensor([0, 1, 15, 16, 17, 32])
 
     assert blocks_per_sequence(context_lens, block_size=16).tolist() == [0, 1, 1, 1, 2, 2]

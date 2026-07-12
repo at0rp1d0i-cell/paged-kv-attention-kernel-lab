@@ -20,7 +20,7 @@ alignment test（对齐测试）:
     验证 paged reference 输出和 dense reference 输出一致。
 ```
 
-`tests/test_week1_scaffold.py` 里原本更多是 scaffold / contract test。新增的 `tests/test_reference.py` 主要承担 semantic / alignment test。
+`tests/test_reference_contracts.py` 主要承担 contract test（契约测试）和 helper test（辅助函数测试）。`tests/test_reference.py` 主要承担 semantic / alignment test（语义/对齐测试）。
 
 ## 2. Dense Reference 测试
 
