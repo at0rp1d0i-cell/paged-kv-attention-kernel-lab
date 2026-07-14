@@ -35,9 +35,15 @@ B=32: 256 programs, 约 1693 GB/s, 94.5%
 `flash_fwd_splitkv_kernel` 和 combine kernel。这为 Triton split-KV 提供了源码级方向证据，而
 不仅是根据延迟曲线猜测。
 
-FlashInfer baseline 暂时受环境阻塞：`flashinfer-python==0.6.14` 在 RTX 5090/SM12 与
-PyTorch CUDA 12.8 下要求 CUDA 12.9 以上，`plan()` 无法通过架构检测。保留可复现 smoke 和
-原始错误，不通过修改 site-packages 或升级整个环境制造不可比较结果。
+FlashInfer baseline 最初受 CUDA 12.8 编译器阻塞。项目迁移到 PyTorch `2.9.1+cu130` 后，
+FlashInfer 仍优先发现系统 `nvcc 12.8`；进一步定位到它按 `CUDA_HOME` 检查编译器版本。最终在
+可选 baseline 依赖组中固定 CUDA 13.0.48 的 `nvcc/crt/nvvm` pip wheels，并自动补齐 pip
+toolkit 与传统 toolkit 的目录差异。整个过程没有修改 FlashInfer 源码。
+
+CUDA 13 正式 sweep 显示，`B=1,S=16384,block=32` 时 FlashInfer 为 `0.0265 ms`，Paged
+Triton 为 `0.2446 ms`，差距约 `9.22x`；`B=4` 差距约 `1.86x`；到 `B=16` 两者均约
+`0.64 ms`。这比只观察 SDPA kernel 名称更直接地证明：split-KV 主要解决小 batch 长 context
+的并行度不足，而大 batch 已接近带宽平台。
 
 ## 方向感受
 
@@ -62,4 +68,4 @@ PyTorch CUDA 12.8 下要求 CUDA 12.9 以上，`plan()` 无法通过架构检测
 3. split-KV -> minimal CUDA port 的路线与验收文档调整
 ```
 
-提交前保留 FlashInfer compatibility blocker，不把未完成的定量 baseline 写进简历。
+提交前保留 CUDA 13 FlashInfer correctness、CSV 与关键图表，并在简历中只引用已复现数据。

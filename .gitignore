@@ -33,3 +33,7 @@ benchmarks/results/*
 !benchmarks/results/decode_attention_program_saturation.csv
 !benchmarks/results/decode_attention_program_saturation_batch_scaling.png
 !benchmarks/results/pytorch_paged_reference_smoke.csv
+!benchmarks/results/decode_attention_flashinfer_cuda13.csv
+!benchmarks/results/decode_attention_flashinfer_cuda13_latency_p50_by_batch.png
+!benchmarks/results/decode_attention_flashinfer_cuda13_bandwidth_by_batch.png
+!benchmarks/results/decode_attention_flashinfer_cuda13_batch_scaling.png

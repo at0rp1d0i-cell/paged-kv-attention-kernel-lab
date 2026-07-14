@@ -440,7 +440,7 @@ CUDA split-KV 不属于主线验收，只作为 stretch goal。
 当前正在收束 performance checkpoint：
 
 1. hardware peak bandwidth utilization；
-2. PyTorch paged reference baseline 与 FlashInfer compatibility probe（当前 SM12/CUDA 12.8 阻塞已记录）；
+2. PyTorch paged reference baseline 与 FlashInfer CUDA 13 quantitative baseline（定量基线）；
 3. `torch.profiler` 与 `docs/profiling-report.md`；
 4. benchmark 笔记、lab note 与 Git checkpoint。
 

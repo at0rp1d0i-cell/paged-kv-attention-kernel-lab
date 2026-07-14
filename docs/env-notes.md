@@ -45,15 +45,15 @@ bash scripts/run_tests.sh
 | GPU memory | 32607 MiB reported by `nvidia-smi`; 33668988928 bytes reported by PyTorch |
 | Compute capability | 12.0 |
 | Driver | 580.105.08 |
-| CUDA runtime | 13.0 reported by `nvidia-smi`; 12.8 used by PyTorch |
-| CUDA compiler / nvcc | 12.8, V12.8.93 |
-| PyTorch | 2.8.0+cu128 |
-| PyTorch CUDA | 12.8 |
-| Triton | 3.4.0 |
+| CUDA runtime | 13.0 reported by `nvidia-smi` and PyTorch |
+| CUDA compiler / nvcc | System 12.8; pinned FlashInfer JIT compiler 13.0, V13.0.48 |
+| PyTorch | 2.9.1+cu130 |
+| PyTorch CUDA | 13.0 |
+| Triton | 3.5.1 |
 | Python | 3.12.3 from uv-managed `.venv` |
 | Package manager | uv 0.11.26 |
 | Dev tools | pytest 9.1.1, ruff 0.15.20, ninja 1.13.0 |
-| FlashInfer | Not required in Week 0 |
+| FlashInfer | 0.6.14 in the optional `baseline` group |
 
 Commands:
 
@@ -80,9 +80,9 @@ PY
 | Check | Status | Notes |
 | --- | --- | --- |
 | PyTorch CUDA tensor op | Passed | `uv run python scripts/gpu_smoke.py` completed tensor op on NVIDIA GeForce RTX 5090. |
-| Triton vector add kernel | Passed | Triton 3.4.0 JIT compiled and launched vector-add kernel. |
+| Triton vector add kernel | Passed | Triton 3.5.1 JIT compiled and launched vector-add kernel. |
 | CUDA extension compile | Passed | `torch.utils.cpp_extension.load` compiled and ran CUDA extension after installing `ninja`. |
-| CPU pytest | Passed | `bash scripts/run_tests.sh`: 1 test passed. |
+| CPU pytest | Passed | `bash scripts/run_tests.sh`: 24 tests passed, 6 GPU tests deselected. |
 | Ruff lint | Passed | `uv run ruff check .`: all checks passed. |
 | NCU installed | Present | `/usr/local/cuda-12.8/bin/ncu`, Nsight Compute 2025.1.1.0. |
 | NCU counter permission | Blocked | `ERR_NVGPUCTRPERM` when wrapping `uv run python scripts/gpu_smoke.py`; `/proc/driver/nvidia/params` reports `RmProfilingAdminOnly: 1`. |
@@ -140,32 +140,40 @@ GPU performance counters. Treat ERR_NVGPUCTRPERM as expected on this machine.
 Do not block Week 1-3 correctness or benchmark harness work on NCU access.
 ```
 
-## 5. Version Pin Candidate
+## 5. Current Version Pin
 
-Candidate environment:
+Validated environment:
 
 ```text
 uv==0.11.26
 python==3.12.3
 numpy>=2.0
-torch==2.8.0+cu128
-triton==3.4.0
-cuda runtime reported by torch==12.8
-cuda compiler==12.8, V12.8.93
+torch==2.9.1+cu130
+triton==3.5.1
+cuda runtime reported by torch==13.0
+flashinfer-python[cu13]==0.6.14
+nvidia-cuda-nvcc/crt/nvvm==13.0.48 for FlashInfer JIT
+system cuda compiler==12.8, V12.8.93
 ninja==1.13.0
 ```
 
 Reason:
 
 ```text
-This is the simplest current uv-managed environment that passed import tests, CPU pytest, Ruff,
-PyTorch CUDA tensor op, Triton JIT launch, and CUDA extension compile/run.
+This uv-managed environment passed import tests, CPU pytest, Ruff, PyTorch CUDA tensor ops,
+Triton JIT launch, CUDA extension compile/run, and FlashInfer paged-decode correctness on SM 12.0.
 ```
 
 ## 6. Open Issues
 
 - `ncu` counter collection is blocked by `ERR_NVGPUCTRPERM`; needs host/container permission change for full Nsight Compute profiling.
 - `nsys` is not installed in the current image.
-- Optional baseline `flashinfer-python==0.6.14` installs from the `baseline` dependency group, but paged decode cannot plan on RTX 5090 / SM 12.0 with PyTorch CUDA 12.8. FlashInfer reports that SM 12.x requires CUDA >= 12.9, then its JIT architecture check raises `RuntimeError: FlashInfer requires GPUs with sm75 or higher`.
+- FlashInfer JIT must not discover the system CUDA 12.8 compiler first. The baseline group installs the
+  matching CUDA 13.0 compiler components, and `flashinfer_baseline.py` selects that compiler before
+  importing FlashInfer.
+- NVIDIA's CUDA 13.0.48 pip wheels use `bin/cicc` and `lib/`, while `nvcc.profile` and FlashInfer expect
+  traditional `nvvm/bin` and `lib64` paths. The baseline helper creates compatibility symlinks inside
+  the generated `.venv`; it does not patch FlashInfer source or site-packages code.
 - Project commands now use `uv sync --locked --group dev` and `uv run`; the earlier root/base conda `pip install -e '.[dev]'` path is superseded.
-- The project-level default index is `https://pypi.tuna.tsinghua.edu.cn/simple` for ordinary PyPI packages; PyTorch remains pinned to the explicit cu128 PyTorch index.
+- The project-level default index is `https://pypi.tuna.tsinghua.edu.cn/simple` for ordinary PyPI
+  packages; PyTorch remains pinned to the explicit cu130 PyTorch index.

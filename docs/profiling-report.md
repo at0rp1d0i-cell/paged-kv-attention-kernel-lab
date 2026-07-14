@@ -127,7 +127,8 @@ split=16 -> 128 programs
 - benchmark 重复读取相同 tensor，小工作集可能受 L2 cache 影响。
 - `torch.profiler` 会扰动微秒级 kernel，只用于 timeline 和 kernel-selection 证据。
 - NCU 因权限不可用，无法直接报告 achieved occupancy、DRAM throughput 和 register usage。
-- FlashInfer 0.6.14 在 RTX 5090 + PyTorch CUDA 12.8 下无法通过 SM12 JIT capability check。
+- 本报告中的 profiler 采样来自初始 PyTorch `2.8.0+cu128` 环境；后续已迁移到
+  `2.9.1+cu130` 并完成 FlashInfer 0.6.14 定量对照，结果见 `docs/benchmark-results.md`。
 
 ## Optimization Decision
 
