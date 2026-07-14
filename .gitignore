@@ -20,3 +20,16 @@ profiles/
 *.sqlite
 *.csv.tmp
 
+# Keep canonical benchmark evidence while ignoring local smoke/recheck artifacts.
+!benchmarks/
+!benchmarks/results/
+benchmarks/results/*
+!benchmarks/results/decode_attention_main.csv
+!benchmarks/results/decode_attention_main_latency_p50_by_batch.png
+!benchmarks/results/decode_attention_main_bandwidth_by_batch.png
+!benchmarks/results/decode_attention_main_bandwidth_utilization_by_batch.png
+!benchmarks/results/decode_attention_main_paged_dense_ratio.png
+!benchmarks/results/decode_attention_main_batch_scaling.png
+!benchmarks/results/decode_attention_program_saturation.csv
+!benchmarks/results/decode_attention_program_saturation_batch_scaling.png
+!benchmarks/results/pytorch_paged_reference_smoke.csv

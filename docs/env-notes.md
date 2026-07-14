@@ -31,7 +31,7 @@ Local validation:
 Local dev setup:
 
 ```bash
-UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple UV_HTTP_TIMEOUT=600 uv sync --locked --group dev
+UV_HTTP_TIMEOUT=600 uv sync --locked --group dev
 bash scripts/run_tests.sh
 ```
 
@@ -166,5 +166,6 @@ PyTorch CUDA tensor op, Triton JIT launch, and CUDA extension compile/run.
 
 - `ncu` counter collection is blocked by `ERR_NVGPUCTRPERM`; needs host/container permission change for full Nsight Compute profiling.
 - `nsys` is not installed in the current image.
+- Optional baseline `flashinfer-python==0.6.14` installs from the `baseline` dependency group, but paged decode cannot plan on RTX 5090 / SM 12.0 with PyTorch CUDA 12.8. FlashInfer reports that SM 12.x requires CUDA >= 12.9, then its JIT architecture check raises `RuntimeError: FlashInfer requires GPUs with sm75 or higher`.
 - Project commands now use `uv sync --locked --group dev` and `uv run`; the earlier root/base conda `pip install -e '.[dev]'` path is superseded.
-- Use `UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple` for ordinary PyPI packages on this machine; PyTorch remains pinned to the explicit cu128 PyTorch index.
+- The project-level default index is `https://pypi.tuna.tsinghua.edu.cn/simple` for ordinary PyPI packages; PyTorch remains pinned to the explicit cu128 PyTorch index.

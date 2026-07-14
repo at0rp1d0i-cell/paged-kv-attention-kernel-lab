@@ -79,7 +79,7 @@ CI 初稿目标：
 推荐先运行：
 
 ```bash
-UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple UV_HTTP_TIMEOUT=600 uv sync --locked --group dev
+UV_HTTP_TIMEOUT=600 uv sync --locked --group dev
 bash scripts/check_env.sh
 uv run python scripts/gpu_smoke.py
 ```

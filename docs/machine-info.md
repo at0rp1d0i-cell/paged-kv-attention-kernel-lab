@@ -260,6 +260,11 @@ line-length = 100
 target-version = "py310"
 
 [[tool.uv.index]]
+name = "tuna-pypi"
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+default = true
+
+[[tool.uv.index]]
 name = "pytorch-cu128"
 url = "https://download.pytorch.org/whl/cu128"
 explicit = true
@@ -311,7 +316,7 @@ tests/test_import.py
 ## Validation Commands（验证命令）
 
 ```bash
-UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple UV_HTTP_TIMEOUT=600 uv sync --locked --group dev
+UV_HTTP_TIMEOUT=600 uv sync --locked --group dev
 bash scripts/check_env.sh
 bash scripts/run_tests.sh
 uv run python scripts/gpu_smoke.py

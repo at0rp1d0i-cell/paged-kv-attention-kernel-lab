@@ -97,7 +97,7 @@ fi
 
 echo
 echo "== Validation commands =="
-echo "UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple UV_HTTP_TIMEOUT=600 uv sync --locked --group dev"
+echo "UV_HTTP_TIMEOUT=600 uv sync --locked --group dev"
 echo "bash scripts/check_env.sh"
 echo "bash scripts/run_tests.sh"
 echo "uv run python scripts/gpu_smoke.py"

@@ -193,9 +193,37 @@ def dense_decode_attention_triton(
         raise ValueError("scale must be a finite positive number")
 
     out = torch.empty_like(q, dtype=torch.float32)
-    grid = (batch_size, num_heads)
+    _launch_dense_decode_attention_triton(
+        q,
+        k,
+        v,
+        context_lens,
+        out,
+        max_context_len=max_context_len,
+        num_heads=num_heads,
+        head_dim=head_dim,
+        scale=scale,
+        block_t=block_t,
+    )
+    return out
 
-    _dense_decode_attention_kernel[grid](
+
+def _launch_dense_decode_attention_triton(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    context_lens: torch.Tensor,
+    out: torch.Tensor,
+    *,
+    max_context_len: int,
+    num_heads: int,
+    head_dim: int,
+    scale: float,
+    block_t: int,
+) -> None:
+    """Launch the validated dense kernel into preallocated output storage."""
+
+    _dense_decode_attention_kernel[(q.shape[0], num_heads)](
         q,
         k,
         v,
@@ -208,7 +236,6 @@ def dense_decode_attention_triton(
         block_t=block_t,
         block_d=128,
     )
-    return out
 
 
 @triton.jit
@@ -439,9 +466,42 @@ def paged_decode_attention_triton(
         raise ValueError("scale must be a finite positive number")
 
     out = torch.empty_like(q, dtype=torch.float32)
-    grid = (batch_size, num_heads)
+    _launch_paged_decode_attention_triton(
+        q,
+        k_cache,
+        v_cache,
+        block_tables,
+        context_lens,
+        out,
+        max_blocks_per_seq=max_blocks_per_seq,
+        block_size=block_size,
+        num_heads=num_heads,
+        head_dim=head_dim,
+        scale=scale,
+        block_t=block_t,
+    )
 
-    _paged_decode_attention_kernel[grid](
+    return out
+
+
+def _launch_paged_decode_attention_triton(
+    q: torch.Tensor,
+    k_cache: torch.Tensor,
+    v_cache: torch.Tensor,
+    block_tables: torch.Tensor,
+    context_lens: torch.Tensor,
+    out: torch.Tensor,
+    *,
+    max_blocks_per_seq: int,
+    block_size: int,
+    num_heads: int,
+    head_dim: int,
+    scale: float,
+    block_t: int,
+) -> None:
+    """Launch the validated paged kernel into preallocated output storage."""
+
+    _paged_decode_attention_kernel[(q.shape[0], num_heads)](
         q,
         k_cache,
         v_cache,
@@ -456,5 +516,3 @@ def paged_decode_attention_triton(
         block_t=block_t,
         block_d=128,
     )
-
-    return out
