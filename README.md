@@ -4,7 +4,8 @@
 
 ## Quickstart
 
-本项目统一使用 `uv` 管理 Python 环境。当前机器普通 PyPI 包使用清华镜像，PyTorch CUDA wheel 固定走 `pyproject.toml` 中的 cu128 PyTorch index。
+本项目统一使用 `uv` 管理 Python 环境。当前机器普通 PyPI 包使用清华镜像，PyTorch CUDA
+wheel 固定走 `pyproject.toml` 中的 cu130 PyTorch index。
 
 ```bash
 cd /root/paged-kv-attention-kernel-lab
@@ -13,6 +14,13 @@ UV_HTTP_TIMEOUT=600 uv sync --locked --group dev
 bash scripts/check_env.sh
 bash scripts/run_tests.sh
 uv run python scripts/gpu_smoke.py
+```
+
+FlashInfer baseline（FlashInfer 基线）使用可选的 CUDA 13 JIT 依赖：
+
+```bash
+UV_HTTP_TIMEOUT=600 uv sync --locked --group baseline
+uv run --group baseline python scripts/flashinfer_smoke.py
 ```
 
 当前容器内 `ncu` 能启动但不能读取 NVIDIA GPU performance counters（性能计数器）：`/proc/driver/nvidia/params` 显示 `RmProfilingAdminOnly: 1`，`ncu` probe 会返回 `ERR_NVGPUCTRPERM`。这不是项目阻塞项；在只有容器内权限时，profiling（性能剖析）默认 fallback（回退）到 CUDA events（CUDA 事件）测 latency（延迟）、`torch.profiler` 看 operator timeline（算子时间线）、analytical bandwidth model（解析带宽模型）估算 effective bandwidth（有效带宽）。

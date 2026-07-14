@@ -10,8 +10,8 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "numpy>=2.0",
-    "torch==2.8.0+cu128",
-    "triton==3.4.0; platform_system == 'Linux'",
+    "torch==2.9.1+cu130",
+    "triton==3.5.1; platform_system == 'Linux'",
 ]
 
 [dependency-groups]
@@ -24,7 +24,10 @@ plot = [
     "matplotlib>=3.9",
 ]
 baseline = [
-    "flashinfer-python==0.6.14",
+    "flashinfer-python[cu13]==0.6.14",
+    "nvidia-cuda-crt==13.0.48",
+    "nvidia-cuda-nvcc==13.0.48",
+    "nvidia-nvvm==13.0.48",
 ]
 
 [tool.setuptools.packages.find]
@@ -47,9 +50,9 @@ url = "https://pypi.tuna.tsinghua.edu.cn/simple"
 default = true
 
 [[tool.uv.index]]
-name = "pytorch-cu128"
-url = "https://download.pytorch.org/whl/cu128"
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
 explicit = true
 
 [tool.uv.sources]
-torch = { index = "pytorch-cu128" }
+torch = { index = "pytorch-cu130" }

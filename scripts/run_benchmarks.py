@@ -24,6 +24,11 @@ from paged_kv_attention.benchmark_utils import (
     measure_synchronized_wall_latency,
 )
 from paged_kv_attention.block_table import make_random_block_tables
+from paged_kv_attention.flashinfer_baseline import (
+    FlashInferPagedDecodeOperation,
+    configure_flashinfer_cuda_home,
+    plan_flashinfer_paged_decode,
+)
 from paged_kv_attention.reference import default_attention_scale, dense_decode_attention
 from paged_kv_attention.triton_decode import (
     _launch_dense_decode_attention_triton,
@@ -73,6 +78,8 @@ CSV_FIELDS = [
     "pytorch_version",
     "pytorch_cuda_version",
     "triton_version",
+    "flashinfer_version",
+    "cuda_compiler_version",
 ]
 
 
@@ -85,7 +92,13 @@ def parse_int_list(value: str) -> list[int]:
 
 def parse_providers(value: str) -> list[str]:
     providers = [item.strip() for item in value.split(",") if item.strip()]
-    valid = {"dense_triton", "paged_triton", "pytorch_dense_sdpa", "pytorch_paged_reference"}
+    valid = {
+        "dense_triton",
+        "flashinfer_paged",
+        "paged_triton",
+        "pytorch_dense_sdpa",
+        "pytorch_paged_reference",
+    }
     unknown = sorted(set(providers) - valid)
     if not providers or unknown:
         raise argparse.ArgumentTypeError(f"unknown providers: {', '.join(unknown) or 'none'}")
@@ -184,6 +197,7 @@ def check_correctness(
     *,
     block_size: int,
     block_t: int,
+    flashinfer_operation: FlashInferPagedDecodeOperation | None = None,
 ) -> None:
     expected = dense_decode_attention(q, dense_k, dense_v, context_lens)
     dense_actual = dense_decode_attention_triton(
@@ -214,6 +228,14 @@ def check_correctness(
     torch.testing.assert_close(dense_actual, expected, atol=2e-3, rtol=2e-3)
     torch.testing.assert_close(paged_actual, expected, atol=2e-3, rtol=2e-3)
     torch.testing.assert_close(sdpa_actual.to(torch.float32), expected, atol=2e-3, rtol=2e-3)
+    if flashinfer_operation is not None:
+        flashinfer_actual = flashinfer_operation.run()
+        torch.testing.assert_close(
+            flashinfer_actual.to(torch.float32),
+            expected,
+            atol=3e-3,
+            rtol=3e-3,
+        )
 
 
 def benchmark_operations(
@@ -229,6 +251,7 @@ def benchmark_operations(
     block_size: int,
     block_t: int,
     reference_max_context: int,
+    flashinfer_operation: FlashInferPagedDecodeOperation | None,
 ) -> Iterable[tuple[str, str, str, Callable[[], object]]]:
     batch_size, num_heads, head_dim = q.shape
     context_len = dense_k.shape[1]
@@ -303,6 +326,12 @@ def benchmark_operations(
             ),
         ),
     }
+    if flashinfer_operation is not None:
+        operations["flashinfer_paged"] = (
+            "framework_paged_decode_preallocated_output",
+            "cuda_events",
+            flashinfer_operation.run,
+        )
 
     for provider in providers:
         if provider == "pytorch_paged_reference" and context_len > reference_max_context:
@@ -406,6 +435,8 @@ def main() -> None:
         raise SystemExit("peak bandwidth must be positive")
     if not torch.cuda.is_available():
         raise SystemExit("CUDA is required")
+    if "flashinfer_paged" in args.providers:
+        configure_flashinfer_cuda_home()
 
     timestamp = dt.datetime.now(dt.timezone.utc)
     run_id = timestamp.strftime("%Y%m%dT%H%M%SZ")
@@ -435,7 +466,12 @@ def main() -> None:
                     device="cuda",
                     dtype=torch.float16,
                 )
-                dense_v = torch.randn_like(dense_k)
+                dense_v = torch.randn(
+                    dense_k.shape,
+                    generator=generator,
+                    device=dense_k.device,
+                    dtype=dense_k.dtype,
+                )
                 context_lens = torch.full(
                     (batch_size,), context_len, device="cuda", dtype=torch.int32
                 )
@@ -446,6 +482,17 @@ def main() -> None:
                     block_size=block_size,
                     seed=args.seed + block_size,
                 )
+                flashinfer_operation = None
+                if "flashinfer_paged" in args.providers:
+                    flashinfer_operation = plan_flashinfer_paged_decode(
+                        q,
+                        k_cache,
+                        v_cache,
+                        block_tables,
+                        context_lens,
+                        block_size=block_size,
+                        scale=default_attention_scale(args.head_dim),
+                    )
 
                 guard_status = "skipped_by_flag" if args.skip_correctness_guard else "not_run"
                 if not guarded:
@@ -459,6 +506,7 @@ def main() -> None:
                         context_lens,
                         block_size=block_size,
                         block_t=args.block_t,
+                        flashinfer_operation=flashinfer_operation,
                     )
                     guarded = True
                     guard_status = "passed_representative_case"
@@ -480,6 +528,7 @@ def main() -> None:
                     block_size=block_size,
                     block_t=args.block_t,
                     reference_max_context=args.reference_max_context,
+                    flashinfer_operation=flashinfer_operation,
                 ):
                     if block_size != args.block_sizes[0] and provider in {
                         "dense_triton",
@@ -528,6 +577,7 @@ def main() -> None:
                     )
 
                 del q, dense_k, dense_v, k_cache, v_cache, block_tables, context_lens
+                del flashinfer_operation
                 gc.collect()
                 torch.cuda.empty_cache()
 

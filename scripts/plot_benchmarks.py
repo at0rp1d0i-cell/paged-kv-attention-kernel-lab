@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 
 PROVIDER_LABELS = {
     "dense_triton": "Dense Triton",
+    "flashinfer_paged": "FlashInfer paged",
     "paged_triton": "Paged Triton",
     "pytorch_dense_sdpa": "PyTorch dense SDPA",
     "pytorch_paged_reference": "PyTorch paged reference",
@@ -23,6 +24,8 @@ SERIES_STYLES = {
     ("paged_triton", 16): ("Paged Triton, block=16", "#d62728", "-"),
     ("paged_triton", 32): ("Paged Triton, block=32", "#2ca02c", "--"),
     ("pytorch_dense_sdpa", 16): ("PyTorch dense SDPA", "#9467bd", "-"),
+    ("flashinfer_paged", 16): ("FlashInfer, block=16", "#ff7f0e", "-"),
+    ("flashinfer_paged", 32): ("FlashInfer, block=32", "#8c564b", "--"),
 }
 
 

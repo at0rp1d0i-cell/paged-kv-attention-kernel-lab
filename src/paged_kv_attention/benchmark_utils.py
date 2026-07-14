@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import math
+import os
 import platform
+import re
 import statistics
 import subprocess
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from importlib.metadata import PackageNotFoundError, version
+from pathlib import Path
 
 import torch
 import triton
@@ -174,6 +178,29 @@ def _nvidia_smi_value(query: str) -> str:
     return result.stdout.splitlines()[0].strip() or "unknown"
 
 
+def _cuda_compiler_version() -> str:
+    cuda_home = os.environ.get("CUDA_HOME")
+    nvcc = Path(cuda_home) / "bin" / "nvcc" if cuda_home else Path("nvcc")
+    try:
+        result = subprocess.run(
+            [str(nvcc), "--version"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return "unknown"
+    match = re.search(r"release (\d+\.\d+)", result.stdout)
+    return match.group(1) if match else "unknown"
+
+
+def _package_version(package: str) -> str:
+    try:
+        return version(package)
+    except PackageNotFoundError:
+        return "not_installed"
+
+
 def collect_environment_metadata(device_index: int = 0) -> dict[str, str]:
     """Collect stable software, GPU, driver, and clock facts for CSV rows."""
 
@@ -191,4 +218,6 @@ def collect_environment_metadata(device_index: int = 0) -> dict[str, str]:
         "pytorch_version": torch.__version__,
         "pytorch_cuda_version": torch.version.cuda or "unknown",
         "triton_version": triton.__version__,
+        "flashinfer_version": _package_version("flashinfer-python"),
+        "cuda_compiler_version": _cuda_compiler_version(),
     }

@@ -156,6 +156,12 @@ print("python_prefix", sys.prefix)
 print("virtual_env", os.environ.get("VIRTUAL_ENV", ""))
 
 for name in ["torch", "triton", "pytest", "ruff", "ninja", "flashinfer"]:
+    if name == "flashinfer":
+        try:
+            print(f"{name}: {metadata.version('flashinfer-python')}")
+        except metadata.PackageNotFoundError:
+            print(f"{name}: not installed")
+        continue
     spec = importlib.util.find_spec(name)
     if spec is None:
         print(f"{name}: not installed")
@@ -217,7 +223,8 @@ PY
   echo "bash scripts/check_env.sh"
   echo "bash scripts/run_tests.sh"
   echo "uv run python scripts/gpu_smoke.py"
+  echo "uv run --group baseline python scripts/flashinfer_smoke.py"
   echo '```'
-} > "${OUT}"
+} | sed 's/[[:space:]]\+$//' > "${OUT}"
 
 echo "Wrote ${OUT}"
