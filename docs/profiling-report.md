@@ -3,14 +3,13 @@
 ## Scope
 
 本报告分析当前 single-pass dense/paged Triton decode attention，并为 Triton split-KV 建立
-profiling baseline。GPU 为 NVIDIA GeForce RTX 5090，PyTorch `2.8.0+cu128`，Triton
-`3.4.0`，FP16 input、FP32 accumulation、`H=8`、`D=128`、`S=16384`。
+profiling baseline。GPU 为 NVIDIA GeForce RTX 5090，PyTorch `2.9.1+cu130`，Triton
+`3.5.1`，FP16 input、FP32 accumulation、`H=8`、`D=128`、`S=16384`。
 
-完整 NCU counter collection 因 `ERR_NVGPUCTRPERM` 不可用。当前证据由三部分组成：
+完整 NCU counter collection 因 `ERR_NVGPUCTRPERM` 不可用。当前证据由两部分组成：
 
 ```text
 CUDA events latency
-torch.profiler operator/kernel timeline
 analytical KV bandwidth model
 ```
 
@@ -26,36 +25,13 @@ uv run python scripts/profile_decode_attention.py \
 
 文本表和 Chrome trace 写入本地 `profiles/`，原始 trace 不进入 Git。
 
-## Kernel Timeline
+## Profiler Status
 
-`B=1,S=16384` 的 profiler CUDA average：
-
-| Path | CUDA average |
-| --- | ---: |
-| Dense Triton | 240 us |
-| Paged Triton | 313 us |
-| PyTorch dense SDPA | 45 us |
-
-`B=16,S=16384`：
-
-| Path | CUDA average |
-| --- | ---: |
-| Dense Triton | 627 us |
-| Paged Triton | 637 us |
-| PyTorch dense SDPA | 644 us |
-
-Profiler instrumentation 会扰动微秒级 kernel，因此正式延迟取自 CUDA-event benchmark；这里
-主要使用 kernel 名称和相对结构做归因。
-
-最重要的 timeline 证据是 PyTorch SDPA 在 `q_len=1`、长 context 下调用：
-
-```text
-flash_fwd_splitkv_kernel
-flash_fwd_splitkv_combine_kernel
-```
-
-`B=1` 时 split kernel 约 `37 us`，combine 约 `6 us`。成熟 baseline 已通过 context split
-增加并行度，这与本项目根据 saturation experiment 得出的 Triton split-KV 方向一致。
+当前 PyTorch 2.9.1 / CUPTI 13.0.48 的 `torch.profiler` 运行只记录到 CPU events，没有生成
+CUDA kernel events。隔离环境中的 PyTorch 2.13.0 / CUPTI 13.0.85 可以正常记录 `kernel`、
+`cuda_runtime` 和 CUDA time，因此问题位于当前 Kineto/CUPTI stack，而不是 RTX 5090、权限或
+脚本。本报告不从 profiler 推导 kernel latency 或 kernel-selection 结论；正式延迟来自
+CUDA-event benchmark，split-KV 方向由 program saturation 与 FlashInfer 对照数据支持。
 
 ## Memory-Bound Evidence
 
@@ -69,10 +45,10 @@ Paged Triton block-32、`S=16384`：
 
 | Batch | Programs | p50 | Effective bandwidth | Nominal peak utilization |
 | ---: | ---: | ---: | ---: | ---: |
-| 1 | 8 | 0.253 ms | 265 GB/s | 15% |
-| 8 | 64 | 0.344 ms | 1562 GB/s | 87% |
-| 16 | 128 | 0.638 ms | 1684 GB/s | 94% |
-| 32 | 256 | 1.268 ms | 1693 GB/s | 94.5% |
+| 1 | 8 | 0.243 ms | 276 GB/s | 15.4% |
+| 8 | 64 | 0.338 ms | 1590 GB/s | 88.8% |
+| 16 | 128 | 0.639 ms | 1681 GB/s | 93.8% |
+| 32 | 256 | 1.272 ms | 1689 GB/s | 94.2% |
 
 从 `128` 增加到 `256` programs 后，工作量和延迟近似翻倍，但有效带宽只增加约 `0.5%`，
 说明大 batch 已进入 memory-bandwidth plateau。此时继续增加 context split 只会增加 partial
@@ -83,9 +59,9 @@ state 和 reduce 开销。
 `B=4,S=16384` 时：
 
 ```text
-Dense Triton:       0.290 ms
-Paged Triton b16:   0.348 ms  (+20%)
-Paged Triton b32:   0.316 ms  (+9%)
+Dense Triton:       0.3245 ms
+Paged Triton b16:   0.3747 ms  (+15.5%)
+Paged Triton b32:   0.3068 ms  (-5.5%)
 ```
 
 `B=16,S=16384` 时 Paged block-32 与 Dense 基本持平。说明 block-table lookup 和物理块跳转
@@ -108,8 +84,8 @@ counter 时，不对 online-softmax 指令占比给出伪精确百分比。
 program_count = batch * num_heads
 ```
 
-`B=1,H=8` 只有 8 个 programs，有效带宽约为标称峰值的 15%。`B=8` 增加到 64 个 programs
-后达到约 87%，`B=16` 的 128 个 programs 接近平台。这个曲线说明问题是 program-level
+`B=1,H=8` 只有 8 个 programs，有效带宽约为标称峰值的 15.4%。`B=8` 增加到 64 个 programs
+后达到约 88.8%，`B=16` 的 128 个 programs 接近平台。这个曲线说明问题是 program-level
 parallelism 不足，而不是单纯需要继续增大 `block_t`。
 
 Split-KV 应优先测试：
@@ -125,10 +101,9 @@ split=16 -> 128 programs
 - GPU clocks 未锁定，p95 存在偶发波动，主要结论使用长 context p50。
 - effective bandwidth 使用解析 useful KV bytes，不等于实际 DRAM transaction bytes。
 - benchmark 重复读取相同 tensor，小工作集可能受 L2 cache 影响。
-- `torch.profiler` 会扰动微秒级 kernel，只用于 timeline 和 kernel-selection 证据。
 - NCU 因权限不可用，无法直接报告 achieved occupancy、DRAM throughput 和 register usage。
-- 本报告中的 profiler 采样来自初始 PyTorch `2.8.0+cu128` 环境；后续已迁移到
-  `2.9.1+cu130` 并完成 FlashInfer 0.6.14 定量对照，结果见 `docs/benchmark-results.md`。
+- 当前 PyTorch 2.9.1 / CUPTI 13.0.48 trace 未记录 CUDA kernel events；升级到已验证可用的
+  profiler stack 会改变主环境，必须与全量 correctness 和 benchmark re-baseline 一起进行。
 
 ## Optimization Decision
 

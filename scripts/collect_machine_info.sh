@@ -209,7 +209,6 @@ PY
   git rev-parse --show-toplevel 2>/dev/null || true
   git rev-parse --short HEAD 2>/dev/null || true
   git branch --show-current 2>/dev/null || true
-  git status --short 2>/dev/null || true
   echo
   echo "Tracked project files:"
   git ls-files 2>/dev/null | sed -n '1,200p' || true

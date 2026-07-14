@@ -23,7 +23,7 @@ UV_HTTP_TIMEOUT=600 uv sync --locked --group baseline
 uv run --group baseline python scripts/flashinfer_smoke.py
 ```
 
-当前容器内 `ncu` 能启动但不能读取 NVIDIA GPU performance counters（性能计数器）：`/proc/driver/nvidia/params` 显示 `RmProfilingAdminOnly: 1`，`ncu` probe 会返回 `ERR_NVGPUCTRPERM`。这不是项目阻塞项；在只有容器内权限时，profiling（性能剖析）默认 fallback（回退）到 CUDA events（CUDA 事件）测 latency（延迟）、`torch.profiler` 看 operator timeline（算子时间线）、analytical bandwidth model（解析带宽模型）估算 effective bandwidth（有效带宽）。
+当前容器内 `ncu` 能启动但不能读取 NVIDIA GPU performance counters（性能计数器）：`/proc/driver/nvidia/params` 显示 `RmProfilingAdminOnly: 1`，`ncu` probe 会返回 `ERR_NVGPUCTRPERM`。这不是项目阻塞项；在只有容器内权限时，profiling（性能剖析）默认 fallback（回退）到 CUDA events（CUDA 事件）测 latency（延迟）和 analytical bandwidth model（解析带宽模型）估算 effective bandwidth（有效带宽）。当前 `torch.profiler` 仅用于 CPU operator 观察，CUDA trace 限制见 `docs/profiling-report.md`。
 
 ## 1. 项目定位
 
@@ -568,7 +568,8 @@ docs/lab-notes/
 控制：
 
 - Week 0 花几块钱先验证；
-- fallback：CUDA events + `torch.profiler` + 解析法带宽模型（理论读取量 / 实测 latency，对比峰值带宽）；如果 `nsys` 可用，再补 timeline；
+- fallback：CUDA events + 解析法带宽模型（理论读取量 / 实测 latency，对比峰值带宽）；当前
+  `torch.profiler` 仅保留 CPU operator 观察，如果 `nsys` 可用再补 GPU timeline；
 - profiling report 的论证不硬依赖 NCU。
 
 ### 风险 6: AI 生成代码掏空学习价值

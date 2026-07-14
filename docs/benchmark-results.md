@@ -2,16 +2,16 @@
 
 ## Status
 
-第一轮 single-pass 主 sweep 与 CUDA 13 FlashInfer 对照 sweep 均已完成。原始结果位于：
+当前 canonical results（标准结果）位于：
 
 ```text
-benchmarks/results/decode_attention_main.csv
-benchmarks/results/decode_attention_flashinfer_cuda13.csv
+benchmarks/results/decode_attention_flashinfer.csv
+benchmarks/results/decode_attention_program_saturation.csv
 ```
 
-两轮均使用 `batch=1/4/16`、`context=128/512/2048/8192/16384`、
+主 sweep 使用 `batch=1/4/16`、`context=128/512/2048/8192/16384`、
 `block_size=16/32`、`num_heads=8`、`head_dim=128`、FP16、`warmup=50`、
-`repeat=300`。CUDA 13 对照 sweep 包含 Dense Triton、Paged Triton、PyTorch SDPA 和
+`repeat=300`。对照 sweep 包含 Dense Triton、Paged Triton、PyTorch SDPA 和
 FlashInfer，共 90 行。
 
 CSV 使用 `1792 GB/s` 作为 RTX 5090 nominal peak memory bandwidth（标称峰值显存带宽）假设，
@@ -19,14 +19,10 @@ CSV 使用 `1792 GB/s` 作为 RTX 5090 nominal peak memory bandwidth（标称峰
 
 主要图表：
 
-- [按 batch 比较 p50 latency](../benchmarks/results/decode_attention_main_latency_p50_by_batch.png)
-- [按 batch 比较 effective bandwidth](../benchmarks/results/decode_attention_main_bandwidth_by_batch.png)
-- [按 batch 比较 nominal peak utilization](../benchmarks/results/decode_attention_main_bandwidth_utilization_by_batch.png)
-- [Paged/Dense Triton latency ratio](../benchmarks/results/decode_attention_main_paged_dense_ratio.png)
-- [长 context 的 batch scaling](../benchmarks/results/decode_attention_main_batch_scaling.png)
-- [CUDA 13 / FlashInfer p50 latency](../benchmarks/results/decode_attention_flashinfer_cuda13_latency_p50_by_batch.png)
-- [CUDA 13 / FlashInfer effective bandwidth](../benchmarks/results/decode_attention_flashinfer_cuda13_bandwidth_by_batch.png)
-- [CUDA 13 / FlashInfer batch scaling](../benchmarks/results/decode_attention_flashinfer_cuda13_batch_scaling.png)
+- [FlashInfer 对照 p50 latency](../benchmarks/results/decode_attention_flashinfer_latency_p50_by_batch.png)
+- [FlashInfer 对照 effective bandwidth](../benchmarks/results/decode_attention_flashinfer_bandwidth_by_batch.png)
+- [FlashInfer 对照 batch scaling](../benchmarks/results/decode_attention_flashinfer_batch_scaling.png)
+- [Program saturation batch scaling](../benchmarks/results/decode_attention_program_saturation_batch_scaling.png)
 
 ## Reproduction
 
@@ -48,7 +44,7 @@ bash scripts/run_benchmarks.sh \
   --repeat 20
 ```
 
-运行初始主 sweep：
+运行不含 FlashInfer 的主 sweep：
 
 ```bash
 bash scripts/run_benchmarks.sh \
@@ -60,7 +56,7 @@ bash scripts/run_benchmarks.sh \
   --peak-bandwidth-gbps 1792
 ```
 
-运行 CUDA 13 / FlashInfer 对照 sweep：
+运行 FlashInfer 对照 sweep：
 
 ```bash
 uv sync --locked --group baseline
@@ -72,7 +68,7 @@ uv run --group baseline python scripts/run_benchmarks.py \
   --warmup 50 \
   --repeat 300 \
   --peak-bandwidth-gbps 1792 \
-  --output benchmarks/results/decode_attention_flashinfer_cuda13.csv
+  --output benchmarks/results/decode_attention_flashinfer.csv
 ```
 
 从 CSV 生成静态图表：
@@ -107,46 +103,30 @@ uv run --group plot python scripts/plot_benchmarks.py benchmarks/results/<result
 
 这些是假设，不是结论。正式图表生成后再逐项接受或否定。
 
-## First Results
+## Single-Pass Results
 
 长 context 的 p50 latency（ms）：
 
 | Batch | Context | Dense Triton | Paged Triton 16 | Paged Triton 32 | Dense SDPA |
 | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1 | 16384 | 0.241 | 0.249 | 0.253 | 0.040 |
-| 4 | 16384 | 0.290 | 0.348 | 0.316 | 0.173 |
-| 16 | 16384 | 0.641 | 0.662 | 0.638 | 0.648 |
+| 1 | 16384 | 0.2529 | 0.2714 | 0.2446 | 0.0404 |
+| 4 | 16384 | 0.3245 | 0.3747 | 0.3068 | 0.1731 |
+| 16 | 16384 | 0.6397 | 0.6611 | 0.6386 | 0.6489 |
 
 `context=16384` 时，Paged Triton 的 effective bandwidth 从 `batch=1` 的约
-`265-269 GB/s`（约标称峰值的 `15%`）提升到 `batch=16` 的约 `1622-1684 GB/s`
-（约 `91%-94%`）。同一 kernel 随着
+`247-274 GB/s`（约标称峰值的 `14%-15%`）提升到 `batch=16` 的约
+`1624-1682 GB/s`（约 `91%-94%`）。同一 kernel 随着
 `(batch, head)` programs 增加获得约 6 倍有效带宽，支持“小 batch 下 program 数不足、
 GPU 未被充分利用”的假设。
 
 Paged Triton 相对 Dense Triton 的长 context 开销并不恒定：
 
-- `batch=1`：约 `2.5%-4.2%`；
-- `batch=4`：约 `8.1%-19.8%`；
-- `batch=16, block=32`：接近持平。
+- `block=16` 时，`batch=1/4/16` 分别约慢 `7.3% / 15.5% / 3.3%`；
+- `block=32` 时，Paged Triton 在本轮分别约快 `3.3% / 5.5% / 0.2%`；
+- 这不是“分页天然更快”，而是 block size、访存状态和 kernel 配置共同作用的结果。
 
 这说明 paging overhead（分页开销）会与并行度、block size 和内存访问状态共同作用，不能用
 单个固定百分比概括。
-
-## Tail-Latency Recheck
-
-主 sweep 中两个最大的 `p95/p50` 异常点被单独用 `warmup=50`、`repeat=300` 复测：
-
-```text
-B=1, S=512,  block=32: 2.05x -> 1.17x
-B=4, S=2048, block=32: 1.34x -> 1.16x
-```
-
-因此原异常更像未锁时钟环境中的偶发抖动，不作为 kernel 固有尾延迟结论。正式报告仍需明确
-标注当前 `clock_state=recorded_not_locked`。
-
-两轮完整 sweep 的长 context Triton p50 结果高度一致：大多数点的相对差异低于 `0.3%`，
-中位差约 `0.04%`。`PyTorch dense SDPA` 的 `batch=1, context=8192` 出现一次约 `32%`
-的 run-to-run 差异，因此该单点不用于推导稳定结论。
 
 ## Program Saturation
 
@@ -154,17 +134,21 @@ B=4, S=2048, block=32: 1.34x -> 1.16x
 
 | Batch | Programs (`B*H`) | Effective bandwidth | Nominal utilization |
 | ---: | ---: | ---: | ---: |
-| 1 | 8 | 265 GB/s | 15% |
-| 2 | 16 | 425 GB/s | 24% |
-| 4 | 32 | 852 GB/s | 48% |
-| 8 | 64 | 1562 GB/s | 87% |
-| 16 | 128 | 1676-1684 GB/s | 94% |
-| 32 | 256 | 1693 GB/s | 94.5% |
+| 1 | 8 | 276 GB/s | 15.4% |
+| 2 | 16 | 438 GB/s | 24.4% |
+| 4 | 32 | 876 GB/s | 48.9% |
+| 8 | 64 | 1590 GB/s | 88.8% |
+| 16 | 128 | 1681 GB/s | 93.8% |
+| 32 | 256 | 1689 GB/s | 94.2% |
+
+所有行来自同一个 canonical sweep；每个值是单轮 300 个 CUDA-event samples 的
+p50 latency 所推导的 effective bandwidth。它不是跨运行置信区间。跨运行稳定性应另行重复
+完整 sweep，再报告 `median(run_p50)` 和 `min-max`。
 
 `128 -> 256` programs 后工作量与延迟近似同时翻倍，而带宽几乎不再提升，因此 split-KV 的
 首批候选应为 `split=4/8/16`，不默认使用 `split=32`。
 
-## CUDA 13 / FlashInfer Results
+## FlashInfer Results
 
 正式对照环境：RTX 5090、PyTorch `2.9.1+cu130`、Triton `3.5.1`、FlashInfer `0.6.14`、
 CUDA 13.0.48 JIT compiler。长 context 的 block-32 p50 latency：
@@ -189,11 +173,12 @@ peak。原因是 64 MiB 左右的逻辑 K/V 工作集可被反复 benchmark 的 
 
 ## Baseline Status
 
-PyTorch paged reference 仅做教学下界：`B=1,S=128,H=8,block=16` 的 synchronized wall
-time 为 `7.925 ms`。它包含 Python token loop、`.item()` 与同步，不与 raw GPU kernel 做
-生产级公平比较。原始行位于 `benchmarks/results/pytorch_paged_reference_smoke.csv`。
+PyTorch paged reference 仅做教学下界：`B=1,S=128,H=8,block=16` 的 3 次 synchronized
+wall-clock smoke 得到 `p50=2.335 ms`。它包含 Python token loop、`.item()` 与同步，不与 raw
+GPU kernel 做生产级公平比较；3 个样本也不足以解释 p95。原始行位于
+`benchmarks/results/pytorch_paged_reference_smoke.csv`。
 
-FlashInfer `0.6.14` 已在 CUDA 13 环境完成 multi-batch、随机 block table 和 partial tail page
+FlashInfer `0.6.14` 已完成 multi-batch、随机 block table 和 partial tail page
 correctness smoke：
 
 ```text

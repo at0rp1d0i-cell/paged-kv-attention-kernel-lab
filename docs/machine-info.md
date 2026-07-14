@@ -1,6 +1,6 @@
 # Machine Info（机器信息）
 
-Last updated（更新时间）: 2026-07-14 18:43:02 UTC
+Last updated（更新时间）: 2026-07-14 19:18:02 UTC
 
 > This file is a machine snapshot（机器快照）. Re-run `bash scripts/collect_machine_info.sh` whenever the project moves to a different machine, GPU instance（GPU 实例）, or CUDA environment（CUDA 环境）.
 
@@ -83,12 +83,12 @@ Vulnerability Tsx async abort:        Not affected
 
 ```text
                total        used        free      shared  buff/cache   available
-Mem:           754Gi        82Gi       174Gi       5.2Gi       497Gi       659Gi
+Mem:           754Gi        81Gi       174Gi       5.2Gi       498Gi       660Gi
 Swap:             0B          0B          0B
 
 MemTotal:       791166876 kB
-MemFree:        183341260 kB
-MemAvailable:   691277288 kB
+MemFree:        183345144 kB
+MemAvailable:   692123060 kB
 SwapTotal:             0 kB
 SwapFree:              0 kB
 ```
@@ -179,7 +179,7 @@ nbd63       0B disk
 ## GPU And CUDA（GPU 和 CUDA）
 
 ```text
-Wed Jul 15 02:43:02 2026
+Wed Jul 15 03:18:02 2026
 +-----------------------------------------------------------------------------------------+
 | NVIDIA-SMI 580.105.08             Driver Version: 580.105.08     CUDA Version: 13.0     |
 +-----------------------------------------+------------------------+----------------------+
@@ -314,30 +314,8 @@ torch = { index = "pytorch-cu130" }
 
 ```text
 /root/paged-kv-attention-kernel-lab
-e72a66b
+a47fa4a
 main
- M .gitignore
- M README.md
- M RESUME_SNIPPETS.md
- M docs/benchmark-results.md
- M docs/env-notes.md
- M docs/lab-notes/week4.md
- M docs/learning-syllabus.md
- M docs/machine-info.md
- M docs/profiling-report.md
- M pyproject.toml
- M scripts/collect_machine_info.sh
- M scripts/flashinfer_smoke.py
- M scripts/plot_benchmarks.py
- M scripts/run_benchmarks.py
- M src/paged_kv_attention/benchmark_utils.py
- M uv.lock
-?? benchmarks/results/decode_attention_flashinfer_cuda13.csv
-?? benchmarks/results/decode_attention_flashinfer_cuda13_bandwidth_by_batch.png
-?? benchmarks/results/decode_attention_flashinfer_cuda13_batch_scaling.png
-?? benchmarks/results/decode_attention_flashinfer_cuda13_latency_p50_by_batch.png
-?? src/paged_kv_attention/flashinfer_baseline.py
-?? tests/test_flashinfer_baseline.py
 
 Tracked project files:
 .github/workflows/ci.yml
@@ -347,12 +325,10 @@ AGENTS.md
 README.md
 RESUME_SNIPPETS.md
 ROADMAP.md
-benchmarks/results/decode_attention_main.csv
-benchmarks/results/decode_attention_main_bandwidth_by_batch.png
-benchmarks/results/decode_attention_main_bandwidth_utilization_by_batch.png
-benchmarks/results/decode_attention_main_batch_scaling.png
-benchmarks/results/decode_attention_main_latency_p50_by_batch.png
-benchmarks/results/decode_attention_main_paged_dense_ratio.png
+benchmarks/results/decode_attention_flashinfer.csv
+benchmarks/results/decode_attention_flashinfer_bandwidth_by_batch.png
+benchmarks/results/decode_attention_flashinfer_batch_scaling.png
+benchmarks/results/decode_attention_flashinfer_latency_p50_by_batch.png
 benchmarks/results/decode_attention_program_saturation.csv
 benchmarks/results/decode_attention_program_saturation_batch_scaling.png
 benchmarks/results/pytorch_paged_reference_smoke.csv
@@ -394,10 +370,12 @@ scripts/sync_to_remote.sh
 src/paged_kv_attention/__init__.py
 src/paged_kv_attention/benchmark_utils.py
 src/paged_kv_attention/block_table.py
+src/paged_kv_attention/flashinfer_baseline.py
 src/paged_kv_attention/layouts.py
 src/paged_kv_attention/reference.py
 src/paged_kv_attention/triton_decode.py
 tests/test_benchmark_utils.py
+tests/test_flashinfer_baseline.py
 tests/test_import.py
 tests/test_reference.py
 tests/test_reference_contracts.py

@@ -168,6 +168,11 @@ Triton JIT launch, CUDA extension compile/run, and FlashInfer paged-decode corre
 
 - `ncu` counter collection is blocked by `ERR_NVGPUCTRPERM`; needs host/container permission change for full Nsight Compute profiling.
 - `nsys` is not installed in the current image.
+- `torch.profiler` reports CUDA as a supported activity, but PyTorch 2.9.1 with CUPTI 13.0.48 produces
+  an empty GPU trace on this machine. An isolated PyTorch 2.13.0 + CUPTI 13.0.85 probe records CUDA
+  kernels correctly, narrowing the issue to the current Kineto/CUPTI stack rather than the GPU,
+  permissions, or profiling script. Keep CUDA events as latency truth until the project deliberately
+  upgrades and re-baselines the full environment.
 - FlashInfer JIT must not discover the system CUDA 12.8 compiler first. The baseline group installs the
   matching CUDA 13.0 compiler components, and `flashinfer_baseline.py` selects that compiler before
   importing FlashInfer.

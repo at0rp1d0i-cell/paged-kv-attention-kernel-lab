@@ -40,7 +40,7 @@
 
 - 被问“为什么 CUDA 没重复实现 split-KV”：说明 CUDA 阶段目标是理解手动线程映射与归约，主线范围锁死 single-pass；CUDA split-KV 是 stretch goal。
 - 被问“用 CUDA 你会怎么写”：答案在 `docs/cuda-design-sketch.md`（线程块映射、shared memory staging、warp 归约、向量化加载）。
-- 被问“和 vLLM / FlashInfer 差在哪”：说明接口和生产特性差异；再展示 CUDA 13 定量结果，解释
+- 被问“和 vLLM / FlashInfer 差在哪”：说明接口和生产特性差异；再展示定量结果，解释
   FlashInfer 的 split-KV 在小 batch 长 context 下提供 context parallelism，而大 batch 时各路径
   收敛到带宽平台。
 - 被问“哪个 bug 印象最深”：从 lab notes 里挑亲手 debug 的案例（mask 边界 / tolerance / 越界读）。
