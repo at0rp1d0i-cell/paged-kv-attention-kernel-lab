@@ -1,8 +1,8 @@
 # Acceptance Criteria
 
-结构说明：Level 1 拆为 Must / Should / Optional；两个可投递检查点（Week 4 末、Week 6 末）；Week 5 为门控三选一。CUDA extension 不是并行任务线。
+结构说明：项目按四个串行 checkpoint 推进：performance baseline、Triton split-KV、CUDA runtime 与 final delivery。CUDA extension 只在 Triton split-KV 稳定后开始，不与核心 Triton 开发并行。
 
-## Level 1: 主线
+## Stage 1: Performance Baseline
 
 ### Must（缺一不可，检查点 1 的底线）
 
@@ -35,7 +35,7 @@ Benchmark：
 - 主配置 sweep：context 128 → 16K 以上、batch 1 → 32。
 - CUDA events 计时、warmup / repeat、p50 / p95。
 - `nvidia-smi -lgc` 锁时钟或记录时钟状态；环境快照（GPU 型号 / driver / 版本）写入结果。
-- baselines：PyTorch dense SDPA、PyTorch paged reference、FlashInfer decode wrapper。
+- baselines：PyTorch dense SDPA、PyTorch paged reference、FlashInfer decode wrapper；若 FlashInfer 与固定 GPU/CUDA stack 不兼容，必须保留可复现 probe、版本组合和原始错误，且不得声称已完成定量对比。
 - 有效带宽利用率：理论读取量 / 实测 latency，对比硬件峰值带宽的百分比。
 
 Profiling report 初稿：
@@ -45,7 +45,7 @@ Profiling report 初稿：
 - online softmax 开销。
 - 小 batch + 长 context 的 SM 占用问题。
 
-### Should（时间允许则做，Week 6 前补齐）
+### Should（时间允许则在 Final Delivery 前补齐）
 
 - `head_dim=64`。
 - BF16 及其 tolerance 测试。
@@ -59,61 +59,54 @@ Profiling report 初稿：
 - 完整 shape grid。
 - roofline 图。
 
-## 检查点 1（Week 4 末，第一个可投递状态）
+## Performance Checkpoint（第一个可投递状态）
 
-- Level 1 Must 全部完成。
+- Stage 1 Must 全部完成。
 - README 能让外人看懂并复现主结果。
 - `docs/benchmark-results.md`、`docs/profiling-report.md` 初稿存在。
 - `RESUME_SNIPPETS.md` 检查点版本可直接放简历。
 
-## CUDA 门控（Week 4 末判定）
-
-开门条件（三条全部满足）：
-
-1. Level 1 Must 全绿。
-2. 检查点 1 文档完成。
-3. lab notes 显示 kernel / profiling 阶段享受多于煎熬。
-
-无论是否开门，交付 `docs/cuda-design-sketch.md`：
-
-- 线程块到 (batch, head) 的映射。
-- K/V block 的 shared memory staging。
-- online softmax 的 warp shuffle 归约。
-- 向量化加载（如 float4）。
-- 与 Triton 自动处理部分的逐项对照。
-
-## Level 2（Week 5，门控三选一，检查点 2）
-
-### 默认: split-KV（Flash-Decoding 风格）
+## Triton Split-KV Checkpoint
 
 - context 分段并行计算 partial softmax，reduce kernel 合并。
 - correctness 与 v1 kernel 全部测试对齐。
+- 覆盖 `split=1/4/8/16`、variable-length batch、random-order block table 与 partial tail。
 - batch=1/2 长 context 前后对比图。
-- 报告解释 SM 占用率变化及收益边界。
+- adaptive dispatch 基于 batch、head、context 与 saturation evidence 选择 single/split path。
+- batch=16/32 不因错误启用 split 而产生明显回退。
+- 报告解释 program 数、有效带宽、reduce 开销与收益边界。
 
-### 门开且投算子岗: 最小 CUDA/C++ PyTorch Extension
+## CUDA Runtime Checkpoint
+
+开始条件：
+
+1. Performance checkpoint 完成。
+2. Triton split-KV correctness 与性能报告完成。
+3. `docs/cuda-design-sketch.md` 明确线程映射、归约、staging 与 vectorized loads。
+4. CUDA extension smoke toolchain 仍可构建运行。
+
+最小 CUDA/C++ PyTorch Extension：
 
 - 范围锁死：`head_dim=128`、MHA、FP16。
+- 实现 single-pass paged decode attention，不默认移植 split-KV。
+- 支持 variable-length batch、block table 与 tail mask。
 - custom op 可 import，C++ binding 可编译，kernel 可 launch。
 - 复用既有 correctness tests 与 reference 对齐。
 - 与 Triton 版本做接口和性能对照。
 - 不要求覆盖 benchmark grid，不要求超过 Triton。
+- CUDA split-KV 仅作为 stretch goal。
 
-### 兴趣转向 infra: Mini KV Block Allocator + Request Simulation
+## Final Delivery
 
-- 支持 request arrival / finish、block allocation / free。
-- 输出 fragmentation、block reuse、memory usage trace。
-- 能解释分页策略如何影响 serving 资源利用率。
-
-## Level 3（Level 1 / 2 稳定后）
-
-1. GQA / MQA（优先，成本低）。
-2. FlashInfer / vLLM 设计层对照深化（benchmark baseline 已在 Level 1）。
-3. INT8 KV cache（不作暑期主线）。
+- GQA / MQA 作为 Should 项，时间允许则补齐。
+- FlashInfer / vLLM 设计层对照深化。
+- 最终 README、benchmark/profiling 报告、CUDA design sketch 与简历表述一致。
+- limitations 包含 vAttention 反方证据、解析带宽模型限制和未实现的 serving allocator。
+- INT8 KV cache 不作为当前项目主线。
 
 ## 过程性验收（贯穿全程）
 
 - 每周合卷复述：能独立手推 online softmax 的 running max / running sum 更新式与 block table 地址计算。
 - 每周 lab note：最难的 bug、学到什么、享受 / 排斥什么（区分工具链痛苦与方向排斥）。
 - README 与简历 snippet 每周更新，任何一周中断项目都是完整的小故事。
-- 最终形态（Week 6 末）：README 第 16 节十个问题能独立回答；limitations 含 vAttention 反方证据。
+- 最终形态：README 第 16 节十个问题能独立回答；limitations 含 vAttention 反方证据；能解释 Triton split-KV 与 CUDA single-pass port 的范围差异。

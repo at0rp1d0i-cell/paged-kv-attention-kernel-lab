@@ -304,7 +304,104 @@ out = acc_final / l_final
 - effective bandwidth 怎么估算？
 - 小 batch 长 context 为什么可能 SM occupancy（SM 占用率）不足？
 
-## 8. 打包阶段：把项目变成可讲述作品
+## 8. Triton Split-KV 阶段：用 context 并行解决小 batch 利用不足
+
+### 目标
+
+把一个 `(batch, head)` 顺序扫描完整 context 的工作拆成多个 `(batch, head, split)`
+programs，计算 partial online-softmax state，再通过 reduce kernel 合并最终输出。
+
+### 要掌握的概念
+
+- program saturation curve（程序数量饱和曲线）。
+- 为什么 program 数少于 SM 数不等于必然低效，为什么带宽饱和点必须实测。
+- partial `m/l/acc` 的语义和可结合合并规则。
+- split 数增加带来的并行收益与 intermediate state / reduce 成本。
+- 为什么 split-KV 只适合小 batch、长 context，而不是无条件启用。
+
+### 接口范围
+
+```text
+partial_m:    [B, H, num_splits]
+partial_l:    [B, H, num_splits]
+partial_acc:  [B, H, num_splits, D]
+out:          [B, H, D]
+```
+
+### 代码任务
+
+- 实现 Triton split partial kernel。
+- 实现 Triton split reduce kernel。
+- 支持 `split=1/4/8/16`。
+- 实现基于 batch、heads、context 和 saturation evidence 的 adaptive dispatch。
+- 生成 single-pass / split-KV 前后对比图。
+
+### 正确性标准
+
+- 所有 split 配置与 FP32 dense reference 对齐。
+- 覆盖 variable-length batch、random-order block table、partial final block 和 garbage slots。
+- `split=1` 与 single-pass paged kernel 语义一致。
+- reduce 合并顺序不改变合理 tolerance 内的结果。
+
+### 复述问题
+
+- partial `m/l/acc` 为什么足以表示一段 context？
+- 两个 partial state 如何合并？
+- 为什么 `split=32` 不一定比 `split=16` 快？
+- adaptive dispatch 需要观察哪些 workload 参数？
+
+## 9. CUDA/C++ Port 阶段：手动实现已验证的 single-pass kernel
+
+### 目标
+
+将已经通过 correctness 和 benchmark 验证的 single-pass paged decode attention 移植为
+限定范围的 CUDA/C++ PyTorch extension，理解 Triton 自动完成了哪些代码生成与调度工作。
+
+### 范围边界
+
+```text
+q_len:       1
+attention:   MHA
+head_dim:    128
+input dtype: FP16
+accumulate:  FP32
+layout:      paged KV + block table
+```
+
+CUDA split-KV 不属于主线验收，只作为 stretch goal。
+
+### 要掌握的概念
+
+- C++ binding 与 PyTorch extension build。
+- CUDA grid/block/thread mapping。
+- shared-memory staging（共享内存暂存）。
+- warp shuffle / block reduction。
+- vectorized loads 与对齐要求。
+- register pressure、occupancy 与手动 launch configuration。
+
+### 代码任务
+
+- 先完成 `docs/cuda-design-sketch.md`。
+- 实现 extension binding 和 kernel launch。
+- 实现 block-table 寻址、tail mask 和 online softmax。
+- 复用现有 reference tests。
+- 与 Triton single-pass kernel 做接口、延迟和有效带宽对照。
+
+### 正确性标准
+
+- extension 可构建、import 和 launch。
+- 覆盖 batch=1/multi-batch、variable context、random-order block table 和 partial tail。
+- FP16 output semantics 与 FP32 reference 在 tolerance 内对齐。
+- 不要求 CUDA 超过 Triton，但必须解释性能差异。
+
+### 复述问题
+
+- Triton program instance 在 CUDA 中对应什么执行组织？
+- 哪些 reduction 在 Triton 中是一行、在 CUDA 中需要显式协作？
+- shared memory、register 和 global memory 分别保存什么？
+- 为什么先移植 single-pass，而不同时移植 split-KV？
+
+## 10. 打包阶段：把项目变成可讲述作品
 
 ### 目标
 
@@ -327,20 +424,24 @@ out = acc_final / l_final
 - online softmax 怎么保证数值稳定？
 - Triton kernel 的 program mapping 是什么？
 - 性能结果说明了什么，没说明什么？
+- split-KV 的收益边界是什么？
+- CUDA 与 Triton 各自承担了哪些手动/自动优化工作？
 
-## 9. 当前进度记录
+## 11. 当前进度记录
 
-当前已完成 reference 阶段的主体内容：
+当前已完成：
 
-- dense decode attention reference
-- paged decode attention reference
-- block table generator
-- reference correctness tests
-- reference 阶段前置知识、实现和测试笔记
+- dense/paged FP32 reference 与 block-table generator；
+- block-wise online softmax 推导与 PyTorch reference；
+- Triton dense/paged single-pass decode kernels；
+- random-order block table、garbage slots 与 variable-length correctness tests；
+- CUDA-event benchmark harness、CSV、图表与 program saturation experiment。
 
-下一段建议进入：
+当前正在收束 performance checkpoint：
 
-1. Triton 最小 kernel 复习。
-2. 普通 softmax 到 online softmax 的 PyTorch 推导。
-3. FlashAttention 与本项目的桥接理解。
-4. 连续 KV layout 的 Triton decode v0。
+1. hardware peak bandwidth utilization；
+2. PyTorch paged reference baseline 与 FlashInfer compatibility probe（当前 SM12/CUDA 12.8 阻塞已记录）；
+3. `torch.profiler` 与 `docs/profiling-report.md`；
+4. benchmark 笔记、lab note 与 Git checkpoint。
+
+随后进入 Triton split-KV，不并行开始 CUDA。

@@ -17,7 +17,7 @@ TODO: 记录你对 online softmax、paged layout 或 reference testing 的理解
 
 ## 享受 / 排斥
 
-TODO: 区分工具链痛苦和方向本身的排斥感。这个判断会服务 Week 4 末 CUDA gate（门控）。
+回看当前阶段，我更享受通过 benchmark 和 profiling 观察性能数据变化，并据此选择优化方向。项目路线因此确定为先完成 Triton split-KV，再串行实现限定范围的 CUDA/C++ port。
 
 ## 下一步
 

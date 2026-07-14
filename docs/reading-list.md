@@ -17,7 +17,7 @@
 
 - 链接：https://huggingface.co/docs/transformers 内搜 "paged attention" / "continuous batching"
 - 读什么：decode path 的 `q_len=1` 语义、`block_table` 的 shape `(batch_size, max_blocks_per_seq)`、`cache_seqlens` 的含义。
-- 读完要能回答：本项目 `paged_attention(q, k_cache, v_cache, block_tables, seq_lens)` 的每个参数为什么长这个形状？（这份文档几乎就是 Level 1 接口的参照答案。）
+- 读完要能回答：本项目 `paged_attention(q, k_cache, v_cache, block_tables, seq_lens)` 的每个参数为什么长这个形状？（这份文档几乎就是 Performance checkpoint 接口的参照答案。）
 
 ### 3. Triton 官方教程 01 / 02 / 03
 
@@ -40,13 +40,16 @@
 - **NCU 权限问题官方页**：https://developer.nvidia.com/ERR_NVGPUCTRPERM ——Week 0 验证失败时按此排查/确认 fallback。
 - Nsight Compute / Nsight Systems 文档：只查用到的功能，不通读。
 
-### Week 5（按门控选择读对应一份）
+### Split-KV 阶段
 
-- **选 split-KV（默认）**：PyTorch Flash-Decoding 博客 https://pytorch.org/blog/flash-decoding/ ——partial softmax 并行 + reduce 的核心思路；可对照 vLLM PagedAttention V2 的 split 设计。
-- **选 CUDA port**：PyTorch C++/CUDA extension 官方教程 https://pytorch.org/tutorials/advanced/cpp_extension.html + vLLM `csrc/attention/attention_kernels.cu` 源码（只读 decode kernel 主循环，理解线程映射即可）。
-- **选 allocator**：vLLM KV cache manager 相关设计文档与源码（`docs.vllm.ai` design 章节）。
+- **PyTorch Flash-Decoding 博客**：https://pytorch.org/blog/flash-decoding/ ——partial softmax 并行 + reduce 的核心思路；可对照 vLLM PagedAttention V2 的 split 设计。
 
-### Week 6（写 limitations 时）
+### CUDA Port 阶段
+
+- **PyTorch C++/CUDA extension 官方教程**：https://pytorch.org/tutorials/advanced/cpp_extension.html ——binding、build 与 custom op 集成。
+- **vLLM paged attention CUDA kernel**：只读 `csrc/attention/attention_kernels.cu` 的 decode 主循环，理解线程映射、归约与向量化加载，不照抄完整生产实现。
+
+### Final Delivery（写 limitations 时）
 
 - **vAttention 论文**：https://arxiv.org/abs/2405.04437 ——只读 intro 和对 PagedAttention 的批评部分（非连续 virtual layout 的编程与性能代价），作为报告里的反方证据。PagedAttention 不是唯一解，报告承认这一点反而更可信。
 

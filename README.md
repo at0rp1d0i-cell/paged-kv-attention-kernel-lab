@@ -9,7 +9,7 @@
 ```bash
 cd /root/paged-kv-attention-kernel-lab
 python -m pip install -U uv
-UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple UV_HTTP_TIMEOUT=600 uv sync --locked --group dev
+UV_HTTP_TIMEOUT=600 uv sync --locked --group dev
 bash scripts/check_env.sh
 bash scripts/run_tests.sh
 uv run python scripts/gpu_smoke.py
@@ -29,7 +29,7 @@ uv run python scripts/gpu_smoke.py
 
 - PyTorch reference implementation
 - Triton paged attention kernel
-- CUDA/C++ PyTorch extension（Week 4 末门控通过后才做，详见第 4 节）
+- 限定范围的 CUDA/C++ PyTorch extension（Triton split-KV 稳定后串行推进，详见第 4 节）
 - correctness tests
 - benchmark harness
 - profiler 分析报告
@@ -184,17 +184,22 @@ kernel 需要支持每个 batch item 不同长度，不能只处理固定 shape 
 - block size：8 / 16 / 32 / 64
 - dtype：FP16 / BF16
 - metrics：latency、tokens/s、effective bandwidth、显存占用、p50 / p95
-- baselines：PyTorch dense SDPA、PyTorch paged reference、FlashInfer、Triton implementation（CUDA extension 门开后加入）
+- baselines：PyTorch dense SDPA、PyTorch paged reference、FlashInfer、Triton implementation，以及 CUDA runtime checkpoint 后的 CUDA implementation；不兼容 baseline 必须记录可复现 probe 和环境错误
 
 真正有价值的是解释性能边界，而不是只追一个漂亮数字。
 
-## 4. 三层交付结构
+当前 benchmark harness 使用 CUDA events 测量 GPU 路径，输出包含环境快照、p50/p95、
+解析 KV bytes 和 effective bandwidth 的 CSV，再由 CSV 生成静态图表。复现命令和测量口径见
+[`docs/benchmark-results.md`](docs/benchmark-results.md)，概念笔记见
+[`note/benchmark-fundamentals.md`](note/benchmark-fundamentals.md)。
 
-暑假版本按“Triton 单主线 + 门控增强”推进：Level 1 拆成 Must / Should / Optional，Level 2 是 Week 4 末门控后的三选一，Level 3 是可选加分项。CUDA extension 不是并行任务线，而是门控选项——两个讲不透的 kernel 不如一个讲得透的。
+## 4. 四阶段交付结构
 
-### Level 1: 主线（Must / Should / Optional）
+项目按串行 checkpoint 推进：先完成 Triton correctness 与 performance baseline，再实现 Triton split-KV，随后移植限定范围的 CUDA/C++ single-pass paged kernel，最后统一打包。CUDA 不与 split-KV 并行开发，也不默认实现第二套 CUDA split-KV。
 
-Level 1 的目标是形成一个完整、可信、可复现的 Paged-KV Attention Triton kernel 项目。Must 全部完成即达到第一个可投递检查点（Week 4 末）。
+### Stage 1: Performance Baseline（Must / Should / Optional）
+
+Stage 1 的目标是形成一个完整、可信、可复现的 Paged-KV Attention Triton kernel baseline。Must 全部完成即达到第一个可投递 checkpoint。
 
 Must（缺一不可）：
 
@@ -208,7 +213,7 @@ Must（缺一不可）：
 - 带宽利用率指标（见 10.1）；
 - profiling report 初稿：memory-bound 论证、paged 间接寻址代价、online softmax 开销、小 batch 长 context 的占用问题。
 
-Should（时间允许则做，Week 6 前补齐）：
+Should（时间允许则在 Final Delivery 前补齐）：
 
 - `head_dim = 64`、BF16；
 - block size sensitivity sweep（8 / 16 / 32 / 64）；
@@ -221,21 +226,13 @@ Optional：
 - 完整 shape grid；
 - roofline 图。
 
-### Level 2: Week 4 末门控三选一
-
-CUDA 门控开门条件（三条全部满足）：
-
-1. Level 1 Must 全绿；
-2. 检查点 1 文档完成；
-3. lab notes 显示 kernel / profiling 阶段享受多于煎熬。
-
-无论是否开门，都交付 `docs/cuda-design-sketch.md`：线程块到 (batch, head) 的映射、K/V block 的 shared memory staging、online softmax 的 warp shuffle 归约、向量化加载、与 Triton 自动处理部分的对照。它直接预答“用 CUDA 你会怎么写”这类面试问题；若开门，它就是实现计划。
-
-#### 默认: split-KV（Flash-Decoding 风格）
+### Stage 2: Triton Split-KV
 
 `q_len = 1` 时每个 (batch, head) 只有一个线程块顺序扫 KV，小 batch 长 context 下 SM 大面积闲置——这是 Week 4 benchmark 会亲手暴露的问题。split-KV 把 context 分段并行计算 partial softmax，再用 reduce kernel 合并。先测出问题、再修掉它的前后对比图，是整个项目面试价值最高的一页，且与主线同一套 Triton 技术栈。
 
-#### 门开且投算子岗: 最小 CUDA/C++ PyTorch Extension
+split-KV 需要输出 partial `m/l/acc`，再由 reduce kernel 合并；覆盖 `split=1/4/8/16`，并根据 program saturation evidence 实现 adaptive dispatch。重点验证 `batch=1/2` 长 context 的收益，以及 `batch=16/32` 不错误启用 split。
+
+### Stage 3: 最小 CUDA/C++ PyTorch Extension
 
 范围锁死 `head_dim = 128` / MHA / FP16。重点展示：
 
@@ -245,29 +242,16 @@ CUDA 门控开门条件（三条全部满足）：
 - 复用既有 correctness tests 与 reference 对齐；
 - 与 Triton 版本的接口和性能对照。
 
-本质是移植一个已被测试覆盖、自己深刻理解的算法，不是从零设计。不要求超过 Triton，也不要求覆盖全部 shape grid。
+CUDA 主线只移植已验证的 single-pass paged kernel，不默认移植 split-KV。本质是移植一个已被测试覆盖、自己深刻理解的算法，不是从零设计。不要求超过 Triton，也不要求覆盖全部 shape grid。
 
-#### 兴趣转向 infra: Mini KV Block Allocator + Request Simulation
+### Stage 4: Final Delivery
 
-如果 lab notes 显示你对 block 生命周期、调度和 benchmark 设计比 kernel 内部更兴奋，选这条。重点展示分页策略如何影响：
-
-- fragmentation；
-- block reuse；
-- 显存占用；
-- request arrival / finish；
-- serving trace；
-- continuous batching 下的 KV block 管理。
-
-它能说明 paged KV cache 为什么是 serving 系统问题，而不只是 kernel layout 问题。
-
-### Level 3: 可选加分
-
-Level 3 只在 Level 1 完整、Level 2 已经做出深度后再考虑。
+只有前三个 checkpoint 稳定后，再统一处理最终增强和打包。
 
 优先级：
 
-1. GQA / MQA 支持（Triton 里近乎一行索引映射，成本低，Week 6 顺手做）；
-2. FlashInfer / vLLM 设计层对照深化（FlashInfer 作为 benchmark baseline 已提前进 Level 1，这里只做设计与接口分析）；
+1. GQA / MQA 支持（Triton 里近乎一行索引映射，成本低，Final Delivery 时补齐）；
+2. FlashInfer / vLLM 设计层对照深化（FlashInfer 作为 benchmark baseline 已提前进入 Performance checkpoint，这里只做设计与接口分析）；
 3. INT8 KV cache。
 
 GQA / MQA 优先级最高。原因是现代 LLM 场景里 GQA / MQA 很常见，而且实现复杂度比 quantized KV 更可控。
@@ -284,8 +268,9 @@ INT8 KV cache 是加分项，但不建议作为暑假主线。它会额外引入
 - 支持 `q_len = 1` 的 LLM generation 场景。
 - 支持 paged KV cache layout。
 - 支持 variable-length batch。
-- Level 1 必须完成 PyTorch reference / Triton kernel / tests / benchmark / profiling。
-- Level 2 按 Week 4 末门控三选一：split-KV（默认）/ 最小 CUDA extension / mini allocator。
+- Stage 1 必须完成 PyTorch reference / Triton kernel / tests / benchmark / profiling。
+- Stage 2 必须完成 Triton split-KV 与 adaptive dispatch。
+- Stage 3 必须完成限定范围的 CUDA/C++ single-pass paged port。
 
 ### 5.2 不做
 
@@ -349,19 +334,19 @@ num_heads == num_kv_heads
 kv_head_id = query_head_id // group_size
 ```
 
-## 7. 六周暑假路线
+## 7. Checkpoint 路线
 
-详细执行计划、每周任务与门控条件见 `ROADMAP.md`，此处只保留总览。
+详细执行计划、每周任务与 checkpoint 条件见 `ROADMAP.md`，此处只保留总览。
 
 | 周期 | 目标 | 检查点 |
 | --- | --- | --- |
 | Week 0（2-3 天） | AutoDL 环境验证（重点：NCU 权限）、git/CI 工程化、必读材料 | — |
 | Week 1 | dense/paged reference + block-table generator + correctness tests | — |
 | Week 2-3 | Triton v0 → v1（先在连续 layout 上写对 online softmax，再加 block table 与 variable-length） | — |
-| Week 4 | benchmark grid + FlashInfer/SDPA baseline + 带宽利用率 + profiling | ✅ 检查点 1：可投递 |
-| Week 4 末 | CUDA 门控判定 + `docs/cuda-design-sketch.md` | — |
-| Week 5 | 门控三选一：split-KV（默认）/ 最小 CUDA port / mini allocator | ✅ 检查点 2 |
-| Week 6 | GQA + 最终报告 + limitations（含 vAttention）+ 简历定稿 + 面试自测 | ✅ 最终形态 |
+| Week 4 | benchmark grid + FlashInfer/SDPA baseline + 带宽利用率 + profiling | ✅ Performance checkpoint |
+| Week 5 | Triton split-KV partial/reduce + adaptive dispatch | ✅ Split-KV checkpoint |
+| Week 6 | CUDA design sketch + 最小 CUDA/C++ single-pass paged port | ✅ CUDA runtime checkpoint |
+| Final | GQA + 最终报告 + limitations（含 vAttention）+ 简历定稿 + 面试自测 | ✅ Final delivery |
 
 两条节奏纪律：
 
@@ -469,17 +454,17 @@ context_length = 128..16384
 
 ### 10.3 Baselines
 
-常驻（Level 1 即包含）：
+常驻（Performance checkpoint 即包含）：
 
 - PyTorch dense SDPA（连续 layout 参照，回答“paging 付出了什么代价”）
 - PyTorch paged reference（教学下界）
 - FlashInfer `BatchDecodeWithPagedKVCacheWrapper`（生产水位参照，只测不追）
 - Triton paged kernel（本项目）
 
-可选：
+后续阶段：
 
-- CUDA extension paged kernel（门开后）
-- vLLM paged attention 设计对照（Level 3，只做设计层）
+- CUDA extension paged kernel（CUDA runtime checkpoint）
+- vLLM paged attention 设计对照（Final Delivery，只做设计层）
 
 ## 11. Profiling 报告应回答的问题
 
@@ -491,8 +476,8 @@ context_length = 128..16384
 4. Paged layout 相比连续 layout 付出了什么代价？
 5. online softmax 带来的额外开销在哪里？
 6. 小 batch + 长 context 下 SM 占用率为什么低？split-KV 能带来什么？
-7. 如果做了 CUDA port，Triton 和 CUDA 版本差异在哪里？如果做了 allocator，分页策略如何影响 fragmentation 和 block reuse？
-8. 当前实现与 FlashInfer 的实测差距是多少？可能来自哪里？
+7. Triton split-KV 和 CUDA single-pass port 分别解决了什么问题？为什么 CUDA 主线没有重复实现 split-KV？
+8. 当前实现与 FlashInfer 的定量差距是多少？若环境不兼容，如何证明并记录 baseline blocker？
 
 ## 12. 最终交付物
 
@@ -521,12 +506,11 @@ docs/lab-notes/
 
 ## 13. 简历表述草案
 
-简历 snippet 按实际交付状态分版本维护在 `RESUME_SNIPPETS.md`：
+简历 snippet 按实际交付状态分 checkpoint 维护在 `RESUME_SNIPPETS.md`：
 
-- 检查点 1 版本：Week 4 末 Level 1 完成即可投递；
-- 版本 A：Triton 主线 + split-KV（无 CUDA extension）；
-- 版本 B：门开后含最小 CUDA extension；
-- 版本 C：Week 5 选 allocator。
+- performance checkpoint：Triton paged kernel + benchmark/profiling；
+- split-KV checkpoint：增加 adaptive split-KV 与优化前后数据；
+- final checkpoint：增加限定范围的 CUDA/C++ port 与 Triton/CUDA 对照。
 
 纪律：只声称实际交付的内容；性能数字绑定具体硬件与配置；不写“复刻 vLLM”。
 
@@ -540,14 +524,14 @@ docs/lab-notes/
 - 只要求明显优于 naive PyTorch reference；
 - 不承诺超过成熟库。
 
-### 风险 2: Level 2 贪多
+### 风险 2: Split-KV 与 CUDA 范围失控
 
 控制：
 
-- CUDA extension 只在 Week 4 末门控通过后开做，且范围锁死；
-- 默认 Level 2 是 split-KV，与主线同一套 Triton 技术栈；
-- 不在 Week 5 同时开两条线；
-- 无论门开与否，`docs/cuda-design-sketch.md` 兜底 CUDA 面试问题。
+- 先完成 Triton split-KV checkpoint，再开始 CUDA；
+- CUDA 范围锁死为 single-pass paged decode、`head_dim=128`、MHA、FP16；
+- CUDA split-KV 仅作为 stretch goal，不属于主线验收；
+- 实现前先完成 `docs/cuda-design-sketch.md`，明确手动控制的学习目标。
 
 ### 风险 3: Benchmark 没有说服力
 

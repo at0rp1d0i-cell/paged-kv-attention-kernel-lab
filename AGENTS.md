@@ -46,8 +46,8 @@
 
 ## 项目优先级
 
-- Level 1 保持 Triton 单主线。
-- CUDA/C++ extension（CUDA/C++ 扩展）是 Week 4 gate（门控）后的选项，不作为默认并行任务。
+- 先完成 Triton correctness、benchmark、profiling 与 split-KV，再串行开始 CUDA/C++ extension（CUDA/C++ 扩展）。
+- CUDA 主线范围锁死为 single-pass paged decode port；CUDA split-KV 仅作为 stretch goal，不与 Triton split-KV 并行开发。
 - 遵守 `ROADMAP.md` 的交付顺序和 `ACCEPTANCE_CRITERIA.md` 的验收标准。
 - 每周都要让项目处于可讲述状态：README、lab notes（实验笔记）、scripts（脚本）和 resume snippets（简历片段）随进度更新。
 - 优先做一个讲得透、测得准的 kernel（内核）和 benchmark story（基准测试叙事），不要堆多个浅层实现。
@@ -93,7 +93,7 @@
 - 结果中记录环境事实：GPU 型号、driver（驱动）、CUDA、PyTorch、Triton、clock state（时钟状态）和关键包版本。
 - 先输出 CSV，再生成图表。
 - 使用 analytical bytes read（解析法读取字节数）/ measured latency（实测延迟）计算 effective bandwidth（有效带宽），再与 hardware peak bandwidth（硬件峰值带宽）对比。
-- baseline（基线）分开记录：PyTorch dense SDPA、PyTorch paged reference、FlashInfer、Triton implementation，以及门控后的 CUDA implementation。
+- baseline（基线）分开记录：PyTorch dense SDPA、PyTorch paged reference、FlashInfer、Triton implementation，以及 CUDA runtime checkpoint 后的 CUDA implementation。
 - 如果 NCU 不可用，按文档 fallback（回退）到 `nsys`、`torch.profiler` 和 analytical bandwidth model（解析带宽模型）。
 
 ## 文档要求
@@ -101,7 +101,7 @@
 - 环境事实写入 `docs/env-notes.md`，不要只留在聊天或终端历史里。
 - 每周 lab note 放在 `docs/lab-notes/`，记录最难的 bug（缺陷）、从 profiler/source code（性能剖析器/源码）学到的内容、方向适配观察。
 - Week 4 需要产出或更新 `docs/benchmark-results.md` 和 `docs/profiling-report.md`。
-- 无论 CUDA gate 是否打开，都要产出 `docs/cuda-design-sketch.md`，覆盖 block mapping（块映射）、shared-memory staging（共享内存暂存）、online softmax reduction（在线 softmax 归约）、vectorized loads（向量化加载）和与 Triton 的对照。
+- CUDA 实现前必须产出 `docs/cuda-design-sketch.md`，覆盖 block mapping（块映射）、shared-memory staging（共享内存暂存）、online softmax reduction（在线 softmax 归约）、vectorized loads（向量化加载）和与 Triton 的对照。
 - `RESUME_SNIPPETS.md` 必须和真实实现、真实测试、真实 benchmark 结果一致。
 
 ## 功能分节与提交节奏

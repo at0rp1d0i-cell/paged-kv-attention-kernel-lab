@@ -2,8 +2,8 @@
 
 ## 总原则
 
-1. **Triton 单主线**：CUDA extension 不是并行任务线，而是 Week 4 末的门控选项（见下）。两个讲不透的 kernel 不如一个讲得透的。
-2. **连续可投递**：README 和简历 snippet 每周随进度更新，保证任何一周被打断，项目都是一个完整的小故事。两个正式检查点：Week 4 末（Level 1 完成）与 Week 6 末（最终形态）。
+1. **先 Triton，后 CUDA**：先用 Triton 完成正确性、benchmark、profiling 与 split-KV，再把已经验证的 single-pass paged kernel 移植为限定范围的 CUDA/C++ extension。两条实现串行推进，不并行开发。
+2. **连续可投递**：README 和简历 snippet 随 checkpoint 更新，保证任何阶段被打断，项目都是一个完整的小故事。正式检查点为 performance baseline、Triton split-KV、CUDA runtime 与 final delivery。
 3. **LLM 协作三规则**：
    - 测试、benchmark harness、画图、脚手架可以交给 AI；**Triton kernel 核心循环第一稿必须自己写**，AI 只做 reviewer 和 debug 陪练；
    - 每周合卷复述一次：手推 online softmax 的 running max / running sum 更新式和 block table 地址计算；
@@ -17,16 +17,16 @@
 | Week 0（2-3 天） | AutoDL 环境验证（重点：NCU 权限）、repo 工程化、必读材料 | — |
 | Week 1 | dense/paged reference + block-table generator + correctness tests | — |
 | Week 2-3 | Triton kernel v0 → v1，测试全绿，长 context 快过 paged reference | — |
-| Week 4 | benchmark grid + FlashInfer/SDPA baseline + 带宽利用率 + profiling | ✅ 检查点 1：可投递 |
-| Week 4 末 | CUDA 门控判定 + `docs/cuda-design-sketch.md` | — |
-| Week 5 | 门控三选一：split-KV（默认）/ 最小 CUDA port / mini allocator | ✅ 检查点 2 |
-| Week 6 | GQA + 最终报告 + limitations + 简历定稿 + 面试自测 | ✅ 最终形态 |
+| Week 4 | benchmark grid + FlashInfer/SDPA baseline + 带宽利用率 + profiling | ✅ Performance checkpoint |
+| Week 5 | Triton split-KV partial/reduce kernels + adaptive dispatch | ✅ Split-KV checkpoint |
+| Week 6 | CUDA design sketch + 最小 CUDA/C++ single-pass paged port | ✅ CUDA runtime checkpoint |
+| Final | GQA + 最终报告 + limitations + 简历定稿 + 面试自测 | ✅ Final delivery |
 
 ## Week 0: 环境验证 + 工程化（2-3 天）
 
 - 租最便宜的 4090 几小时，完成三件事：
   - 确定并 pin 住 PyTorch + Triton 版本组合，跑通一个 hello Triton kernel；
-  - 编译一个 vector-add CUDA extension（验证编译工具链，为 Week 5 可能的 CUDA port 留路）；
+  - 编译一个 vector-add CUDA extension（验证后续最小 CUDA port 的编译工具链）；
   - 对它跑一次 `ncu`，验证 GPU performance counter 权限。若报 `ERR_NVGPUCTRPERM`，确定 fallback：`nsys` + torch.profiler + 解析法带宽模型。
 - `git init` + GitHub + CI（CPU 可跑的测试 + lint；GPU tests 打 `gpu` marker skip）。
 - 必读（timebox 1.5 天，其余资料用到再查；完整分层阅读清单见 `docs/reading-list.md`）：
@@ -62,35 +62,49 @@
   - PyTorch dense SDPA（回答“paging 付出了什么代价”）；
   - PyTorch paged reference（教学下界）；
   - FlashInfer `BatchDecodeWithPagedKVCacheWrapper`（生产水位参照，只测不追）。
+- 若 FlashInfer 与固定 GPU/CUDA stack 不兼容，保留可复现 smoke、版本和原始错误，不为单个 baseline 破坏已验证环境。
 - 主配置 sweep：context 128 → 32K；batch 1 → 32；block_size 16/32。
 - 测量纪律：CUDA events、warmup/repeat、p50/p95、`nvidia-smi -lgc` 锁时钟（或记录时钟状态）、环境快照写入 CSV。
 - 带宽利用率：`seq_len × 2 × num_kv_heads × head_dim × dtype_size / latency`，除以硬件峰值带宽得百分比——既是 memory-bound 的硬证据，也是 speedup 的理论天花板。
 - profiling 按 Week 0 验证的工具链执行（NCU 或 nsys + 解析法）。
 - 预期发现并解释：batch=1 长 context 下每个 (batch, head) 单线程块顺序扫 KV 导致 SM 占用不足（Week 5 split-KV 的铺垫）。
 
-✅ 检查点 1：`docs/benchmark-results.md` 与 `docs/profiling-report.md` 初稿完成；README 可读可复现；简历 snippet 检查点版本可投递。
+✅ Performance checkpoint：`docs/benchmark-results.md` 与 `docs/profiling-report.md` 初稿完成；README 可读可复现；简历 checkpoint 版本可投递。
 
-## Week 4 末: CUDA 门控判定
+## Week 5: Triton Split-KV（检查点 2）
 
-开门条件（三条全部满足）：
+- context 分段并行计算 partial online-softmax state：`m/l/acc`；
+- reduce kernel 合并所有 split，输出最终 `[B,H,D]`；
+- 覆盖 `split=1/4/8/16`、variable-length batch、random-order block table 与 partial tail；
+- 基于 program saturation curve 设计 adaptive dispatch，只在小 batch、长 context 下启用 split；
+- 对比 `batch=1/2`、context `8K/16K/32K` 的优化前后 p50/p95 与有效带宽；
+- 验证 `batch=16/32` 不因错误启用 split 而产生明显回退。
 
-1. Level 1 Must 全绿；
-2. 检查点 1 文档完成；
-3. lab notes 显示 kernel / profiling 阶段享受多于煎熬。
+✅ Split-KV checkpoint：correctness 与 single-pass kernel 对齐；收益边界有图表和解释；adaptive dispatch 行为可测试。
 
-无论是否开门，花 1-2 天写 `docs/cuda-design-sketch.md`：线程块到 (batch, head) 的映射、K/V block 的 shared memory staging、online softmax 的 warp shuffle 归约、向量化加载（float4）、与 Triton 自动处理部分的对照。这份文档直接预答“用 CUDA 你会怎么写”这类面试题；若开门，它就是实现计划。
+## Week 6: Minimal CUDA/C++ Port（检查点 3）
 
-## Week 5: 门控三选一（检查点 2）
+先完成 `docs/cuda-design-sketch.md`：线程块到 `(batch, head)` 的映射、K/V block 的 shared-memory staging、online-softmax reduction、vectorized loads，以及 Triton 自动处理与 CUDA 手动控制的对照。
 
-- **默认：split-KV（Flash-Decoding 风格）**——context 分段并行计算 partial softmax，再用 reduce kernel 合并。验收：correctness 与 v1 对齐；batch=1/2 长 context 前后对比图；报告解释占用率变化。
-- **门开且投算子岗：最小 CUDA port**——范围锁死 `head_dim=128` / MHA / FP16；复用既有测试对齐；与 Triton 接口和性能对照。移植已知正确、自己深刻理解的算法，不从零设计。
-- **兴趣明确转向 infra：mini KV block allocator + request simulation**——arrival/finish、alloc/free、fragmentation、block reuse、memory trace。
+CUDA 实现范围锁死：
 
-## Week 6: GQA + 打包（最终形态）
+- single-pass paged decode attention，不默认移植 split-KV；
+- `q_len=1`、MHA、`head_dim=128`、FP16 input、FP32 accumulation；
+- variable-length batch、block table 和 tail mask；
+- C++ binding 可编译/import，CUDA kernel 可 launch；
+- 复用既有 FP32 reference correctness tests；
+- 用 CUDA events 与 Triton 做接口、延迟和有效带宽对照；
+- 不要求 CUDA 超过 Triton，也不要求覆盖完整 benchmark grid。
+
+CUDA split-KV 仅作为 stretch goal，不属于主线验收。
+
+✅ CUDA runtime checkpoint：最小 extension 可构建、可测试、可测量，并能解释 Triton/CUDA 的实现与工程成本差异。
+
+## Final: GQA + 打包（最终形态）
 
 - GQA / MQA 支持（Triton 里近乎一行索引映射）。
 - 最终报告：limitations 必须包含 vAttention 反方证据（PagedAttention 不是唯一解，有间接寻址与 kernel 复杂度代价）。
 - `scripts/run_tests.sh` / `scripts/run_benchmarks.sh` 复现脚本。
-- 简历 snippet 按实际交付定稿（RESUME_SNIPPETS 版本 A / B / C）。
+- 简历 snippet 按实际交付定稿，区分 performance、split-KV 与 split-KV+CUDA checkpoint。
 - 按 README 第 16 节十个问题做面试自测，答不出的补。
-- 汇总 6 周 lab notes，写下方向判断结论：kernel、infra/系统、benchmark/performance，哪类工作让你愿意继续。
+- 汇总 lab notes，写下对 kernel、runtime 与 benchmark/performance 工作的方向判断。
