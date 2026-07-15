@@ -2,8 +2,8 @@
 
 ## Scope
 
-本报告分析当前 single-pass dense/paged Triton decode attention，并为 Triton split-KV 建立
-profiling baseline。GPU 为 NVIDIA GeForce RTX 5090，PyTorch `2.13.0+cu130`，Triton
+本报告分析 single-pass dense/paged Triton decode attention、split-KV 收益边界与 adaptive
+dispatch。GPU 为 NVIDIA GeForce RTX 5090，PyTorch `2.13.0+cu130`，Triton
 `3.7.1`，FP16 input、FP32 accumulation、`H=8`、`D=128`、`S=16384`。
 
 完整 NCU counter collection 因 `ERR_NVGPUCTRPERM` 不可用。当前证据由三部分组成：
@@ -112,6 +112,11 @@ split=8  -> 64 programs
 split=16 -> 128 programs
 ```
 
+same-shape sweep 验证了这个方向，同时给出了停止 split 的边界：`S=16384` 时，adaptive path
+在 `B=1/2/4/8` 分别获得 `10.50x / 5.70x / 2.08x / 1.10x`，到 `B=16/32` 选择
+single-pass。`B>=16,S>=4096` 的保护规则避免在已接近带宽平台时增加 partial state、第二次
+kernel launch 和 reduce。
+
 ## Limitations
 
 - GPU clocks 未锁定，p95 存在偶发波动，主要结论使用长 context p50。
@@ -119,9 +124,12 @@ split=16 -> 128 programs
 - benchmark 重复读取相同 tensor，小工作集可能受 L2 cache 影响。
 - NCU 因权限不可用，无法直接报告 achieved occupancy、DRAM throughput 和 register usage。
 - `torch.profiler` 会扰动微秒级 kernel，只用于 timeline 与 kernel-selection 证据。
+- adaptive policy 只在 RTX 5090、FP16、`H=8`、`D=128`、`block_size=32` 的 equal-length
+  sweep 上校准；其他 block size 保守回退 single，variable-length 性能仍需单独测量。
 
 ## Optimization Decision
 
-Triton partial/reduce split-KV 已通过 correctness，并完成 equal-work 开销分析。下一步用
-same-shape sweep 确定 context threshold 与 split 数，再实现 adaptive dispatch，只覆盖小 batch、
-长 context。大 batch single-pass 已接近带宽物理下界，不应无条件增加 split 与 reduce。
+Triton partial/reduce split-KV 已通过 correctness，equal-work analysis 解释了约 `1.06x` 的
+partial/reduce 固定成本，same-shape sweep 则确定了 context threshold 与 split 数。adaptive
+dispatch 只在实测可获益区域启用 split，并在 canonical 42 个 shape 上保持相对 single-pass
+无回退。这个 profiling checkpoint 已闭环，下一步转入 CUDA single-pass design sketch。

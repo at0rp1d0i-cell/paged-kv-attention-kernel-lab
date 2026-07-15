@@ -249,6 +249,11 @@ Optional：
 
 split-KV 需要输出 partial `m/l/acc`，再由 reduce kernel 合并；覆盖 `split=1/4/8/16`，并根据 program saturation evidence 实现 adaptive dispatch。重点验证 `batch=1/2` 长 context 的收益，以及 `batch=16/32` 不错误启用 split。
 
+该 checkpoint 已完成。RTX 5090 / FP16 / `H=8` / `D=128` / `block=32` 的 42-shape
+same-shape sweep 中，adaptive path 在 `B=1,S=16K` 的 raw-kernel p50 获得 `10.50x`，收益随 batch 增加而衰减，
+到 `B=16/32,S=16K` 保留 single-pass；canonical 42 个选择相对 single-pass 均无回退。CSV、
+图表、复现命令和策略适用边界见 [`docs/benchmark-results.md`](docs/benchmark-results.md)。
+
 ### Stage 3: 最小 CUDA/C++ PyTorch Extension
 
 范围锁死 `head_dim = 128` / MHA / FP16。重点展示：
@@ -526,7 +531,8 @@ docs/lab-notes/
 简历 snippet 按实际交付状态分 checkpoint 维护在 `RESUME_SNIPPETS.md`：
 
 - performance checkpoint：Triton paged kernel + benchmark/profiling；
-- split-KV checkpoint：增加 adaptive split-KV 与优化前后数据；
+- split-KV checkpoint：adaptive split-KV 已完成，`B=1,S=16K` 为 `10.50x`，
+  `B>=16,S>=4K` 保留 single-pass；
 - final checkpoint：增加限定范围的 CUDA/C++ port 与 Triton/CUDA 对照。
 
 纪律：只声称实际交付的内容；性能数字绑定具体硬件与配置；不写“复刻 vLLM”。

@@ -20,11 +20,11 @@
 
 ### 中文
 
-> 独立实现面向 LLM decode 阶段的 Paged-KV Attention Triton 算子，支持 variable-length batch 与 block-table KV cache layout；针对小 batch 长 context 下 program 数不足的问题，实现 Flash-Decoding 风格 partial/reduce split-KV 与 adaptive dispatch，并量化优化前后延迟、有效带宽和大 batch 收益边界（RTX 5090 / FP16）。
+> 独立实现面向 LLM decode 阶段的 Paged-KV Attention Triton 算子，支持 variable-length batch 与 block-table KV cache layout；针对小 batch 长 context 下 program 数不足，实现 Flash-Decoding 风格 partial/reduce split-KV 与 evidence-based adaptive dispatch，在 RTX 5090 / FP16、`H=8,D=128` 下将 `B=1,S=16K` raw-kernel p50 延迟降低 `10.50x`，并在 `B>=16,S>=4K` 保留 single-pass 以避免带宽平台回退。
 
 ### English
 
-> Built a paged-KV attention Triton kernel for LLM decode inference with variable-length batching and block-table KV layout; implemented Flash-Decoding-style partial/reduce split-KV with adaptive dispatch to address insufficient program-level parallelism at small batch and long context, quantifying latency, effective-bandwidth gains, and the large-batch break-even boundary (RTX 5090 / FP16).
+> Built a paged-KV attention Triton kernel for LLM decode inference with variable-length batching and block-table KV layout; implemented Flash-Decoding-style partial/reduce split-KV with evidence-based adaptive dispatch, reducing raw-kernel p50 latency by `10.50x` at `B=1,S=16K,H=8,D=128` on RTX 5090 / FP16 while retaining single-pass for `B>=16,S>=4K` to avoid regressions at the bandwidth plateau.
 
 ## Final Checkpoint 版本（Triton Split-KV + 最小 CUDA Port）
 
