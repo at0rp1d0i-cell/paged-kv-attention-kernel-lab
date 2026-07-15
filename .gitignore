@@ -34,3 +34,8 @@ benchmarks/results/*
 !benchmarks/results/split_kv_equal_work.csv
 !benchmarks/results/split_kv_equal_work_latency_p50.png
 !benchmarks/results/split_kv_equal_work_bandwidth.png
+!benchmarks/results/split_kv_same_shape.csv
+!benchmarks/results/split_kv_same_shape_latency_p50_by_batch.png
+!benchmarks/results/split_kv_same_shape_speedup_by_batch.png
+!benchmarks/results/split_kv_same_shape_best_dispatch_map.png
+!benchmarks/results/split_kv_same_shape_adaptive_dispatch_map.png

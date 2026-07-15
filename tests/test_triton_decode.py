@@ -5,6 +5,7 @@ from paged_kv_attention.block_table import make_random_block_tables
 from paged_kv_attention.reference import dense_decode_attention
 from paged_kv_attention.triton_decode import (
     dense_decode_attention_triton,
+    paged_decode_attention_adaptive_triton,
     paged_decode_attention_split_partials_triton,
     paged_decode_attention_split_triton,
     paged_decode_attention_triton,
@@ -411,4 +412,40 @@ def test_split_decode_matches_fp32_reference(num_splits: int) -> None:
     )
 
     assert actual.dtype == torch.float32
+    torch.testing.assert_close(actual, expected, atol=2e-3, rtol=2e-3)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
+@pytest.mark.parametrize(
+    ("context_lens", "block_size", "seed"),
+    [
+        ([33, 19], 32, 127),
+        ([4096, 3073], 32, 131),
+        ([257, 193], 16, 137),
+    ],
+)
+def test_adaptive_decode_matches_fp32_reference(
+    context_lens: list[int],
+    block_size: int,
+    seed: int,
+) -> None:
+    q, dense_k, dense_v, k_cache, v_cache, block_tables, context_lens_tensor = (
+        _make_paged_split_case(
+            context_lens,
+            num_heads=2,
+            block_size=block_size,
+            seed=seed,
+        )
+    )
+    expected = dense_decode_attention(q, dense_k, dense_v, context_lens_tensor)
+    actual = paged_decode_attention_adaptive_triton(
+        q,
+        k_cache,
+        v_cache,
+        block_tables,
+        context_lens_tensor,
+        block_size=block_size,
+        block_t=128,
+    )
+
     torch.testing.assert_close(actual, expected, atol=2e-3, rtol=2e-3)

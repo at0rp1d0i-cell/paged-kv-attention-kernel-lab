@@ -963,3 +963,135 @@ def paged_decode_attention_split_triton(
     )
 
     return out
+
+
+def select_paged_decode_num_splits(
+    *,
+    batch_size: int,
+    num_heads: int,
+    max_context_len: int,
+    block_size: int,
+) -> int | None:
+    """Select the measured RTX 5090 split-KV policy, or ``None`` for single-pass.
+
+    The policy is calibrated from the canonical FP16, ``head_dim=128``,
+    ``block_size=32`` same-shape sweep. Other block sizes conservatively use the
+    single-pass path until they have their own benchmark evidence.
+    """
+
+    values = {
+        "batch_size": batch_size,
+        "num_heads": num_heads,
+        "max_context_len": max_context_len,
+        "block_size": block_size,
+    }
+    for name, value in values.items():
+        if not isinstance(value, int) or isinstance(value, bool):
+            raise TypeError(f"{name} must be an integer")
+        if value <= 0:
+            raise ValueError(f"{name} must be positive")
+
+    base_programs = batch_size * num_heads
+    if block_size != 32 or max_context_len <= 1024 or base_programs >= 256:
+        return None
+    if base_programs >= 128:
+        return 4 if max_context_len <= 2048 else None
+    if base_programs >= 64:
+        return 4
+    if base_programs >= 32:
+        if max_context_len <= 2048:
+            return 4
+        if max_context_len <= 8192:
+            return 8
+        return 4
+    return 4 if max_context_len <= 2048 else 16
+
+
+def paged_decode_attention_adaptive_triton(
+    q: torch.Tensor,
+    k_cache: torch.Tensor,
+    v_cache: torch.Tensor,
+    block_tables: torch.Tensor,
+    context_lens: torch.Tensor,
+    *,
+    block_size: int,
+    block_t: int = 128,
+    scale: float | None = None,
+) -> torch.Tensor:
+    """Dispatch paged decode attention to the measured single-pass or split-KV path.
+
+    The maximum valid context length drives the current variable-length batch policy.
+    This preserves correctness for uneven batches but is only performance-calibrated
+    for the equal-length shapes in the canonical RTX 5090 benchmark.
+    """
+
+    num_heads, head_dim, max_blocks_per_seq, scale = _validate_paged_decode_inputs(
+        q,
+        k_cache,
+        v_cache,
+        block_tables,
+        context_lens,
+        block_size=block_size,
+        block_t=block_t,
+        scale=scale,
+    )
+    max_context_len = int(torch.max(context_lens).item())
+    num_splits = select_paged_decode_num_splits(
+        batch_size=q.shape[0],
+        num_heads=num_heads,
+        max_context_len=max_context_len,
+        block_size=block_size,
+    )
+    out = torch.empty_like(q, dtype=torch.float32)
+    if num_splits is None:
+        _launch_paged_decode_attention_triton(
+            q,
+            k_cache,
+            v_cache,
+            block_tables,
+            context_lens,
+            out,
+            max_blocks_per_seq=max_blocks_per_seq,
+            block_size=block_size,
+            num_heads=num_heads,
+            head_dim=head_dim,
+            scale=scale,
+            block_t=block_t,
+        )
+        return out
+
+    partial_shape = (q.shape[0], num_heads, num_splits)
+    partial_m = torch.empty(partial_shape, device=q.device, dtype=torch.float32)
+    partial_l = torch.empty(partial_shape, device=q.device, dtype=torch.float32)
+    partial_acc = torch.empty(
+        (*partial_shape, head_dim),
+        device=q.device,
+        dtype=torch.float32,
+    )
+    _launch_paged_decode_attention_split_partial_triton(
+        q,
+        k_cache,
+        v_cache,
+        block_tables,
+        context_lens,
+        partial_m,
+        partial_l,
+        partial_acc,
+        max_blocks_per_seq=max_blocks_per_seq,
+        block_size=block_size,
+        num_heads=num_heads,
+        head_dim=head_dim,
+        num_splits=num_splits,
+        scale=scale,
+        block_t=block_t,
+    )
+    _launch_paged_decode_attention_split_reduce_triton(
+        partial_m,
+        partial_l,
+        partial_acc,
+        out,
+        num_heads=num_heads,
+        head_dim=head_dim,
+        num_splits=num_splits,
+    )
+    return out

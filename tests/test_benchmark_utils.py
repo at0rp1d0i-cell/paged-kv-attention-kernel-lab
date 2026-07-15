@@ -6,6 +6,7 @@ from paged_kv_attention.benchmark_utils import (
     bandwidth_utilization_percent,
     effective_bandwidth_gbps,
     make_equal_work_cases,
+    measure_interleaved_cuda_latencies,
     percentile,
     summarize_latencies,
 )
@@ -83,6 +84,29 @@ def test_equal_work_cases_reject_mismatched_program_counts() -> None:
 def test_equal_work_cases_reject_unsupported_split_count() -> None:
     with pytest.raises(ValueError, match="split counts must be one of"):
         make_equal_work_cases(16384, [(8, 2)])
+
+
+@pytest.mark.parametrize(
+    ("operations", "warmup", "repeat", "message"),
+    [
+        ({}, 0, 1, "operations must not be empty"),
+        ({"operation": lambda: None}, -1, 1, "warmup must be non-negative"),
+        ({"operation": lambda: None}, 0, 0, "repeat must be positive"),
+    ],
+)
+def test_interleaved_cuda_timing_rejects_invalid_arguments(
+    operations: dict[str, object],
+    warmup: int,
+    repeat: int,
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        measure_interleaved_cuda_latencies(  # type: ignore[arg-type]
+            operations,
+            warmup=warmup,
+            repeat=repeat,
+            seed=0,
+        )
 
 
 @pytest.mark.parametrize("quantile", [-0.1, 1.1])

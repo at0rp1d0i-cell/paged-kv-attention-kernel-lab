@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import csv
 import datetime as dt
-import random
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
@@ -20,7 +19,7 @@ from paged_kv_attention.benchmark_utils import (
     collect_environment_metadata,
     effective_bandwidth_gbps,
     make_equal_work_cases,
-    summarize_latencies,
+    measure_interleaved_cuda_latencies,
 )
 from paged_kv_attention.block_table import make_random_block_tables
 from paged_kv_attention.reference import default_attention_scale, dense_decode_attention
@@ -239,45 +238,6 @@ def _check_correctness(
     torch.testing.assert_close(out, expected, atol=2e-3, rtol=2e-3)
 
 
-def _measure_interleaved_cuda_latencies(
-    operations: dict[str, Callable[[], None]],
-    *,
-    warmup: int,
-    repeat: int,
-    seed: int,
-) -> dict[str, LatencyStats]:
-    """Measure each operation once per shuffled cycle to balance clock and order effects."""
-
-    names = list(operations)
-    rng = random.Random(seed)
-    for _ in range(warmup):
-        order = names.copy()
-        rng.shuffle(order)
-        for name in order:
-            operations[name]()
-    torch.cuda.synchronize()
-
-    event_pairs: dict[str, list[tuple[torch.cuda.Event, torch.cuda.Event]]] = {
-        name: [] for name in names
-    }
-    for _ in range(repeat):
-        order = names.copy()
-        rng.shuffle(order)
-        for name in order:
-            start = torch.cuda.Event(enable_timing=True)
-            end = torch.cuda.Event(enable_timing=True)
-            start.record()
-            operations[name]()
-            end.record()
-            event_pairs[name].append((start, end))
-
-    torch.cuda.synchronize()
-    return {
-        name: summarize_latencies([start.elapsed_time(end) for start, end in pairs])
-        for name, pairs in event_pairs.items()
-    }
-
-
 def _result_row(
     *,
     case: EqualWorkCase,
@@ -480,7 +440,7 @@ def main() -> None:
         )
         operations[case.label] = operation
 
-    stats_by_case = _measure_interleaved_cuda_latencies(
+    stats_by_case = measure_interleaved_cuda_latencies(
         operations,
         warmup=args.warmup,
         repeat=args.repeat,

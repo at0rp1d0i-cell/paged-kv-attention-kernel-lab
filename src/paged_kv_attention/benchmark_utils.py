@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import os
 import platform
+import random
 import re
 import statistics
 import subprocess
@@ -176,6 +177,54 @@ def measure_cuda_latency(
     torch.cuda.synchronize()
     samples_ms = [start.elapsed_time(end) for start, end in event_pairs]
     return summarize_latencies(samples_ms)
+
+
+def measure_interleaved_cuda_latencies(
+    operations: dict[str, Callable[[], object]],
+    *,
+    warmup: int,
+    repeat: int,
+    seed: int,
+) -> dict[str, LatencyStats]:
+    """Measure shuffled operations once per cycle to balance clock and order effects."""
+
+    if not operations:
+        raise ValueError("operations must not be empty")
+    if warmup < 0:
+        raise ValueError("warmup must be non-negative")
+    if repeat <= 0:
+        raise ValueError("repeat must be positive")
+    if not torch.cuda.is_available():
+        raise RuntimeError("CUDA is required for benchmark timing")
+
+    names = list(operations)
+    rng = random.Random(seed)
+    for _ in range(warmup):
+        order = names.copy()
+        rng.shuffle(order)
+        for name in order:
+            operations[name]()
+    torch.cuda.synchronize()
+
+    event_pairs: dict[str, list[tuple[torch.cuda.Event, torch.cuda.Event]]] = {
+        name: [] for name in names
+    }
+    for _ in range(repeat):
+        order = names.copy()
+        rng.shuffle(order)
+        for name in order:
+            start = torch.cuda.Event(enable_timing=True)
+            end = torch.cuda.Event(enable_timing=True)
+            start.record()
+            operations[name]()
+            end.record()
+            event_pairs[name].append((start, end))
+
+    torch.cuda.synchronize()
+    return {
+        name: summarize_latencies([start.elapsed_time(end) for start, end in pairs])
+        for name, pairs in event_pairs.items()
+    }
 
 
 def measure_synchronized_wall_latency(
