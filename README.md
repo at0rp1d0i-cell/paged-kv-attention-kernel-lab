@@ -7,6 +7,15 @@
 本项目统一使用 `uv` 管理 Python 环境。当前机器普通 PyPI 包使用清华镜像，PyTorch CUDA
 wheel 固定走 `pyproject.toml` 中的 cu130 PyTorch index。
 
+修改依赖或下载源前，可以先做限量下载测速（默认每个源读取 `8 MiB`、重复两次）：
+
+```bash
+python scripts/benchmark_download_sources.py
+```
+
+自定义源时重复传入 `--source NAME,INDEX_URL,PACKAGE`；脚本会同时报告 package index（包索引）
+耗时、TTFB（首字节延迟）和 wheel 流式吞吐，不会把完整的大型 wheel 写入磁盘。
+
 ```bash
 cd /root/paged-kv-attention-kernel-lab
 python -m pip install -U uv
@@ -23,7 +32,7 @@ UV_HTTP_TIMEOUT=600 uv sync --locked --group baseline
 uv run --group baseline python scripts/flashinfer_smoke.py
 ```
 
-当前容器内 `ncu` 能启动但不能读取 NVIDIA GPU performance counters（性能计数器）：`/proc/driver/nvidia/params` 显示 `RmProfilingAdminOnly: 1`，`ncu` probe 会返回 `ERR_NVGPUCTRPERM`。这不是项目阻塞项；在只有容器内权限时，profiling（性能剖析）默认 fallback（回退）到 CUDA events（CUDA 事件）测 latency（延迟）和 analytical bandwidth model（解析带宽模型）估算 effective bandwidth（有效带宽）。当前 `torch.profiler` 仅用于 CPU operator 观察，CUDA trace 限制见 `docs/profiling-report.md`。
+当前容器内 `ncu` 能启动但不能读取 NVIDIA GPU performance counters（性能计数器）：`/proc/driver/nvidia/params` 显示 `RmProfilingAdminOnly: 1`，`ncu` probe 会返回 `ERR_NVGPUCTRPERM`。这不是项目阻塞项；在只有容器内权限时，profiling（性能剖析）默认 fallback（回退）到 CUDA events（CUDA 事件）测 latency（延迟）和 analytical bandwidth model（解析带宽模型）估算 effective bandwidth（有效带宽）。当前 `torch.profiler` 可以记录 CUDA kernel timeline，正式 latency 仍以 CUDA events 为准，详见 `docs/profiling-report.md`。
 
 ## 1. 项目定位
 

@@ -77,6 +77,14 @@
 - correctness（正确性）默认以 FP32 dense reference（FP32 稠密参考实现）为 ground truth（真值）。
 - Tensor layout（张量布局）、block-table semantics（块表语义）、dtype（数据类型）和 shape restriction（形状限制）必须在函数、docstring 或测试中明确。
 
+## 下载与环境变更
+
+- 用户要求下载依赖、工具链或其他大型产物时，正式下载前先做小样本测速；Python package source（包源）优先运行 `python scripts/benchmark_download_sources.py`，其他下载使用等价的限量流式探测。
+- 测速至少区分 index/metadata latency（索引/元数据延迟）与实际文件吞吐，不能只用 ping 或小网页响应代替下载速度。
+- 根据实测吞吐、待下载体积和当前磁盘余量，先估算下载时间与落盘开销，再选择候选源和安装方案。
+- 如果只有唯一可信源，仍先测速并向用户说明预计耗时；速度异常时先排查代理、镜像与源配置，不直接开始长时间下载。
+- 测速是瞬时网络事实，只用于当前下载决策；除非会影响环境复现，不把单次速度写成长期固定结论。
+
 ## Correctness（正确性）要求
 
 - 覆盖 batch=1 和 multi-batch（多 batch）。
