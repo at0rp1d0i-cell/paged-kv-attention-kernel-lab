@@ -7,6 +7,7 @@ __all__ = [
     "dense_decode_attention_triton",
     "make_random_block_tables",
     "paged_decode_attention",
+    "paged_decode_attention_split_triton",
     "paged_decode_attention_triton",
 ]
 
@@ -20,5 +21,6 @@ from paged_kv_attention.reference import (
 )
 from paged_kv_attention.triton_decode import (
     dense_decode_attention_triton,
+    paged_decode_attention_split_triton,
     paged_decode_attention_triton,
 )
