@@ -2,6 +2,12 @@
 
 面向 LLM decode inference 的 Paged-KV attention kernel 实验项目。项目从 FP32 reference 出发，实现 Triton single-pass paged decode attention、split-KV partial/reduce kernels 和基于实测证据的 adaptive dispatch，并建立 correctness、benchmark 与 profiling 闭环。
 
+## 架构与演进
+
+![Paged-KV architecture](docs/figures/paged-kv-architecture.png)
+
+![Optimization evolution](docs/figures/optimization-evolution.png)
+
 ## 项目概览
 
 当前实现聚焦 `q_len=1` 的 decode attention，使用 block table 把逻辑 token 位置映射到离散物理 KV blocks。项目不包含完整 serving engine 或 KV allocator，重点是理解并验证 paged layout、online softmax、GPU program-level parallelism 和显存带宽之间的关系。
