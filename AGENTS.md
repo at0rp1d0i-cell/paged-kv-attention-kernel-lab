@@ -143,4 +143,4 @@ GPU smoke test（GPU 冒烟测试）：
 python scripts/gpu_smoke.py
 ```
 
-新增 GPU tests 时，要确保 CPU-only CI（仅 CPU 持续集成）仍然能在没有 CUDA device（CUDA 设备）的环境中运行。
+新增 GPU tests 时，要确保本地 CPU-only tests（仅 CPU 测试）仍然能在没有 CUDA device（CUDA 设备）的环境中运行。
