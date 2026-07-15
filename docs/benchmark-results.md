@@ -19,19 +19,6 @@ FlashInfer，共 90 行。
 CSV 使用 `1792 GB/s` 作为 RTX 5090 nominal peak memory bandwidth（标称峰值显存带宽）假设，
 同时记录 effective bandwidth 和 nominal utilization。该比例是解析模型，不是 NCU DRAM counter。
 
-主要图表：
-
-- [FlashInfer 对照 p50 latency](../benchmarks/results/decode_attention_flashinfer_latency_p50_by_batch.png)
-- [FlashInfer 对照 effective bandwidth](../benchmarks/results/decode_attention_flashinfer_bandwidth_by_batch.png)
-- [FlashInfer 对照 batch scaling](../benchmarks/results/decode_attention_flashinfer_batch_scaling.png)
-- [Program saturation batch scaling](../benchmarks/results/decode_attention_program_saturation_batch_scaling.png)
-- [Split-KV equal-work p50 latency](../benchmarks/results/split_kv_equal_work_latency_p50.png)
-- [Split-KV equal-work effective bandwidth](../benchmarks/results/split_kv_equal_work_bandwidth.png)
-- [Same-shape split-KV p50 latency](../benchmarks/results/split_kv_same_shape_latency_p50_by_batch.png)
-- [Same-shape speedup](../benchmarks/results/split_kv_same_shape_speedup_by_batch.png)
-- [Same-shape measured-best dispatch](../benchmarks/results/split_kv_same_shape_best_dispatch_map.png)
-- [Adaptive dispatch policy](../benchmarks/results/split_kv_same_shape_adaptive_dispatch_map.png)
-
 ## Reproduction
 
 先验证 correctness（正确性）：
@@ -190,6 +177,8 @@ p50 latency 所推导的 effective bandwidth。它不是跨运行置信区间。
 `128 -> 256` programs 后工作量与延迟近似同时翻倍，而带宽几乎不再提升，因此 split-KV 的
 首批候选应为 `split=4/8/16`，不默认使用 `split=32`。
 
+![Program saturation batch scaling](../benchmarks/results/decode_attention_program_saturation_batch_scaling.png)
+
 ## Equal-Work Split-KV Analysis
 
 same-shape benchmark 回答“给定真实 `B/S` 应选择哪个实现”，但不能直接解释不同 batch 间的
@@ -222,6 +211,10 @@ RTX 5090 上的正式结果为：
 该 sweep 使用 shared-KV interleaved steady state（共享 KV 的交错稳态）；64 MiB useful KV
 working set 可被 L2 复用，因此 effective bandwidth 可能超过 nominal DRAM peak。这里应比较
 同一 run 内的相对延迟，不能把解析带宽解释为实际 DRAM transaction rate。
+
+![Equal-work split-KV latency](../benchmarks/results/split_kv_equal_work_latency_p50.png)
+
+![Equal-work split-KV effective bandwidth](../benchmarks/results/split_kv_equal_work_bandwidth.png)
 
 ## Same-Shape Split-KV And Adaptive Dispatch
 
@@ -261,6 +254,14 @@ context 差异扩大 dispatch 范围。
 policy，不是跨 GPU autotuner。其他 block size 直接回退 single；variable-length batch 使用
 `max(context_lens)` 选择路径，目前只验证 correctness，尚未形成独立性能结论。
 
+![Same-shape split-KV latency](../benchmarks/results/split_kv_same_shape_latency_p50_by_batch.png)
+
+![Same-shape split-KV speedup](../benchmarks/results/split_kv_same_shape_speedup_by_batch.png)
+
+![Measured-best dispatch](../benchmarks/results/split_kv_same_shape_best_dispatch_map.png)
+
+![Adaptive dispatch policy](../benchmarks/results/split_kv_same_shape_adaptive_dispatch_map.png)
+
 ## FlashInfer Results
 
 正式对照环境：RTX 5090、PyTorch `2.13.0+cu130`、Triton `3.7.1`、FlashInfer `0.6.14`。
@@ -283,6 +284,12 @@ policy，不是跨 GPU autotuner。其他 block size 直接回退 single；varia
 `B=1,S=16384` 的 FlashInfer 解析有效带宽约 `2.83 TB/s`，高于 `1792 GB/s` 标称 DRAM
 peak。原因是 64 MiB 左右的逻辑 K/V 工作集可被反复 benchmark 的 L2 cache 复用；这不是显存
 物理带宽超过硬件规格，也不能与冷缓存生产流量等同。
+
+![FlashInfer latency comparison](../benchmarks/results/decode_attention_flashinfer_latency_p50_by_batch.png)
+
+![FlashInfer effective bandwidth](../benchmarks/results/decode_attention_flashinfer_bandwidth_by_batch.png)
+
+![FlashInfer batch scaling](../benchmarks/results/decode_attention_flashinfer_batch_scaling.png)
 
 ## Baseline Status
 

@@ -36,7 +36,7 @@
 
 ### Week 4（benchmark / profiling 时）
 
-- **FlashInfer 文档**：https://docs.flashinfer.ai ——`BatchDecodeWithPagedKVCacheWrapper` API 与 KV layout 章节，接 baseline 用；顺手记录它的接口和你的接口差异（写进 design doc，面试素材）。
+- **FlashInfer 文档**：https://docs.flashinfer.ai ——`BatchDecodeWithPagedKVCacheWrapper` API 与 KV layout 章节，接 baseline 用；同时记录它与本项目在接口、调度和 cache layout 上的差异。
 - **NCU 权限问题官方页**：https://developer.nvidia.com/ERR_NVGPUCTRPERM ——Week 0 验证失败时按此排查/确认 fallback。
 - Nsight Compute / Nsight Systems 文档：只查用到的功能，不通读。
 

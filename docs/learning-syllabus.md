@@ -401,16 +401,15 @@ CUDA split-KV 不属于主线验收，只作为 stretch goal。
 - shared memory、register 和 global memory 分别保存什么？
 - 为什么先移植 single-pass，而不同时移植 split-KV？
 
-## 10. 打包阶段：把项目变成可讲述作品
+## 10. 项目整理阶段：形成可复现技术记录
 
 ### 目标
 
-把代码、测试、benchmark、profiling 和学习笔记整理成一个面试可讲的完整项目。
+把代码、测试、benchmark、profiling 和学习笔记整理成一个可复现、可解释的完整技术项目。
 
 ### 产出
 
 - 更新 README 的项目故事和结果。
-- 更新 `RESUME_SNIPPETS.md`。
 - 写 `docs/benchmark-results.md`。
 - 写 `docs/profiling-report.md`。
 - 写 `docs/cuda-design-sketch.md`。

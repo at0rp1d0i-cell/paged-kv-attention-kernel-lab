@@ -1,6 +1,6 @@
 # 项目 Agent 协作规则
 
-本仓库是面向 LLM decode inference（LLM 解码阶段推理）的 Paged-KV attention kernel lab（分页 KV 注意力内核实验室）。协作目标不是“尽快替用户写完”，而是帮助用户形成可解释、可复现、可面试讲清楚的工程项目。
+本仓库是面向 LLM decode inference（LLM 解码阶段推理）的 Paged-KV attention kernel lab（分页 KV 注意力内核实验室）。协作目标不是“尽快替用户写完”，而是帮助用户形成可解释、可复现、能够独立推导和复述设计取舍的工程项目。
 
 ## 交流与教学节奏
 
@@ -49,7 +49,7 @@
 - 先完成 Triton correctness、benchmark、profiling 与 split-KV，再串行开始 CUDA/C++ extension（CUDA/C++ 扩展）。
 - CUDA 主线范围锁死为 single-pass paged decode port；CUDA split-KV 仅作为 stretch goal，不与 Triton split-KV 并行开发。
 - 遵守 `ROADMAP.md` 的交付顺序和 `ACCEPTANCE_CRITERIA.md` 的验收标准。
-- 每周都要让项目处于可讲述状态：README、lab notes（实验笔记）、scripts（脚本）和 resume snippets（简历片段）随进度更新。
+- 每周都要让项目处于可复现状态：README、lab notes（实验笔记）、scripts（脚本）和技术报告随进度更新。
 - 优先做一个讲得透、测得准的 kernel（内核）和 benchmark story（基准测试叙事），不要堆多个浅层实现。
 
 ## 代码质量与改动尺度
@@ -110,7 +110,7 @@
 - 每周 lab note 放在 `docs/lab-notes/`，记录最难的 bug（缺陷）、从 profiler/source code（性能剖析器/源码）学到的内容、方向适配观察。
 - Week 4 需要产出或更新 `docs/benchmark-results.md` 和 `docs/profiling-report.md`。
 - CUDA 实现前必须产出 `docs/cuda-design-sketch.md`，覆盖 block mapping（块映射）、shared-memory staging（共享内存暂存）、online softmax reduction（在线 softmax 归约）、vectorized loads（向量化加载）和与 Triton 的对照。
-- `RESUME_SNIPPETS.md` 必须和真实实现、真实测试、真实 benchmark 结果一致。
+- README 与技术报告必须和真实实现、真实测试、真实 benchmark 结果一致。
 
 ## 功能分节与提交节奏
 

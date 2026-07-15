@@ -66,8 +66,8 @@ Triton 为 `0.2729 ms`，差距约 `11.53x`；`B=4` 差距约 `2.04x`；到 `B=1
 
 ```text
 1. benchmark harness、CUDA-event timing、CSV/plot 与 utility tests
-2. canonical results、profiling report、lab note 与 resume checkpoint
+2. canonical results、profiling report 与 lab note
 3. split-KV -> minimal CUDA port 的路线与验收文档调整
 ```
 
-提交前保留 FlashInfer correctness、CSV 与关键图表，并在简历中只引用已复现数据。
+提交前保留 FlashInfer correctness、CSV 与关键图表，所有性能结论只引用已复现数据。

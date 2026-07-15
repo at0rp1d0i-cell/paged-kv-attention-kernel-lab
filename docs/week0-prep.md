@@ -26,7 +26,7 @@
 
 ```bash
 git init
-git add README.md ROADMAP.md ACCEPTANCE_CRITERIA.md RESUME_SNIPPETS.md docs scripts
+git add README.md ROADMAP.md ACCEPTANCE_CRITERIA.md docs scripts
 git commit -m "Initialize paged-kv attention kernel lab plan"
 ```
 

@@ -296,7 +296,6 @@ Tracked project files:
 ACCEPTANCE_CRITERIA.md
 AGENTS.md
 README.md
-RESUME_SNIPPETS.md
 ROADMAP.md
 benchmarks/results/decode_attention_flashinfer.csv
 benchmarks/results/decode_attention_flashinfer_bandwidth_by_batch.png

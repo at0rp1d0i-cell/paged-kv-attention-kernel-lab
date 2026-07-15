@@ -59,12 +59,12 @@ Profiling report 初稿：
 - 完整 shape grid。
 - roofline 图。
 
-## Performance Checkpoint（第一个可投递状态）
+## Performance Checkpoint（第一个可复现状态）
 
 - Stage 1 Must 全部完成。
 - README 能让外人看懂并复现主结果。
 - `docs/benchmark-results.md`、`docs/profiling-report.md` 初稿存在。
-- `RESUME_SNIPPETS.md` 检查点版本可直接放简历。
+- README 明确记录实现范围、关键结果、复现方法和已知限制。
 
 ## Triton Split-KV Checkpoint
 
@@ -100,7 +100,7 @@ Profiling report 初稿：
 
 - GQA / MQA 作为 Should 项，时间允许则补齐。
 - FlashInfer / vLLM 设计层对照深化。
-- 最终 README、benchmark/profiling 报告、CUDA design sketch 与简历表述一致。
+- 最终 README、benchmark/profiling 报告与 CUDA design sketch 的接口、结果和限制一致。
 - limitations 包含 vAttention 反方证据、解析带宽模型限制和未实现的 serving allocator。
 - INT8 KV cache 不作为当前项目主线。
 
@@ -108,5 +108,5 @@ Profiling report 初稿：
 
 - 每周合卷复述：能独立手推 online softmax 的 running max / running sum 更新式与 block table 地址计算。
 - 每周 lab note：最难的 bug、学到什么、享受 / 排斥什么（区分工具链痛苦与方向排斥）。
-- README 与简历 snippet 每周更新，任何一周中断项目都是完整的小故事。
-- 最终形态：README 第 16 节十个问题能独立回答；limitations 含 vAttention 反方证据；能解释 Triton split-KV 与 CUDA single-pass port 的范围差异。
+- README 与技术报告随 checkpoint 更新，任何一周中断都保留可复现的实现状态。
+- 最终形态：能独立推导 online softmax 与 block-table mapping；limitations 含 vAttention 反方证据；能解释 Triton split-KV 与 CUDA single-pass port 的范围差异。
