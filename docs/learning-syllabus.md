@@ -435,13 +435,14 @@ CUDA split-KV 不属于主线验收，只作为 stretch goal。
 - block-wise online softmax 推导与 PyTorch reference；
 - Triton dense/paged single-pass decode kernels；
 - random-order block table、garbage slots 与 variable-length correctness tests；
-- CUDA-event benchmark harness、CSV、图表与 program saturation experiment。
+- CUDA-event benchmark harness、CSV、图表与 program saturation experiment；
+- Triton split-KV partial/reduce kernels 与 `split=1/4/8/16` correctness；
+- program-matched equal-work benchmark。
 
-当前正在收束 performance checkpoint：
+当前正在收束 Triton Split-KV checkpoint：
 
-1. hardware peak bandwidth utilization；
-2. PyTorch paged reference baseline 与 FlashInfer quantitative baseline（定量基线）；
-3. `torch.profiler` 与 `docs/profiling-report.md`；
-4. benchmark 笔记、lab note 与 Git checkpoint。
+1. same-shape split sweep 与收益边界；
+2. evidence-based adaptive dispatch 与行为测试；
+3. split-KV 前后图表、lab note 与 Git checkpoint。
 
-随后进入 Triton split-KV，不并行开始 CUDA。
+完成后先写 CUDA design sketch，再串行开始 CUDA single-pass port。

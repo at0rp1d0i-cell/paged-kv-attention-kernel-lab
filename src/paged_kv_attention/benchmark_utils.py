@@ -30,6 +30,87 @@ class LatencyStats:
     samples: int
 
 
+@dataclass(frozen=True)
+class EqualWorkCase:
+    """One program-matched case in an equal-work split-KV comparison."""
+
+    batch_size: int
+    context_len: int
+    num_splits: int | None
+
+    @property
+    def provider(self) -> str:
+        return "paged_triton_single" if self.num_splits is None else "paged_triton_split"
+
+    @property
+    def context_partitions(self) -> int:
+        return self.num_splits if self.num_splits is not None else 1
+
+    @property
+    def label(self) -> str:
+        implementation = "single" if self.num_splits is None else f"split={self.num_splits}"
+        return f"B={self.batch_size},S={self.context_len},{implementation}"
+
+    def main_program_count(self, num_heads: int) -> int:
+        return self.batch_size * num_heads * self.context_partitions
+
+    def reduce_program_count(self, num_heads: int) -> int:
+        if self.num_splits is None:
+            return 0
+        return self.batch_size * num_heads
+
+    def tokens_per_main_program(self) -> int:
+        return self.context_len // self.context_partitions
+
+    def partial_state_bytes(self, *, num_heads: int, head_dim: int) -> int:
+        if self.num_splits is None:
+            return 0
+        fp32_state_values = 2 + head_dim  # m, l, and acc[D]
+        return self.batch_size * num_heads * self.num_splits * fp32_state_values * 4
+
+
+def make_equal_work_cases(
+    total_context_tokens: int,
+    batch_split_pairs: Sequence[tuple[int, int | None]],
+) -> list[EqualWorkCase]:
+    """Build cases with equal KV work and equal main-program counts.
+
+    ``None`` selects the single-pass path. Integer split counts select the split-KV
+    partial/reduce path and must match the split counts supported by the current kernel.
+    """
+
+    if total_context_tokens <= 0:
+        raise ValueError("total_context_tokens must be positive")
+    if not batch_split_pairs:
+        raise ValueError("batch_split_pairs must not be empty")
+
+    cases = []
+    for batch_size, num_splits in batch_split_pairs:
+        if batch_size <= 0:
+            raise ValueError("batch sizes must be positive")
+        if num_splits is not None and num_splits not in (1, 4, 8, 16):
+            raise ValueError("split counts must be one of 1, 4, 8, or 16")
+        if total_context_tokens % batch_size != 0:
+            raise ValueError("total_context_tokens must be divisible by every batch size")
+
+        context_len = total_context_tokens // batch_size
+        context_partitions = num_splits if num_splits is not None else 1
+        if context_len % context_partitions != 0:
+            raise ValueError("each context length must be divisible by its context partitions")
+        cases.append(
+            EqualWorkCase(
+                batch_size=batch_size,
+                context_len=context_len,
+                num_splits=num_splits,
+            )
+        )
+
+    batch_partition_products = {case.batch_size * case.context_partitions for case in cases}
+    if len(batch_partition_products) != 1:
+        raise ValueError("cases must have equal batch_size * context_partitions")
+    return cases
+
+
 def percentile(samples: Sequence[float], quantile: float) -> float:
     """Return a linearly interpolated percentile for non-empty samples."""
 

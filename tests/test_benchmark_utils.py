@@ -1,9 +1,11 @@
 import pytest
 
 from paged_kv_attention.benchmark_utils import (
+    EqualWorkCase,
     analytical_kv_bytes,
     bandwidth_utilization_percent,
     effective_bandwidth_gbps,
+    make_equal_work_cases,
     percentile,
     summarize_latencies,
 )
@@ -51,6 +53,36 @@ def test_bandwidth_utilization_compares_with_nominal_peak() -> None:
 def test_bandwidth_utilization_rejects_invalid_peak() -> None:
     with pytest.raises(ValueError, match="peak_bandwidth must be positive"):
         bandwidth_utilization_percent(1.0, 0.0)
+
+
+def test_equal_work_cases_match_kv_work_and_program_topology() -> None:
+    cases = make_equal_work_cases(
+        16384,
+        [(1, 16), (2, 8), (4, 4), (16, None)],
+    )
+
+    assert cases == [
+        EqualWorkCase(batch_size=1, context_len=16384, num_splits=16),
+        EqualWorkCase(batch_size=2, context_len=8192, num_splits=8),
+        EqualWorkCase(batch_size=4, context_len=4096, num_splits=4),
+        EqualWorkCase(batch_size=16, context_len=1024, num_splits=None),
+    ]
+    assert {case.batch_size * case.context_len for case in cases} == {16384}
+    assert {case.main_program_count(num_heads=8) for case in cases} == {128}
+    assert {case.tokens_per_main_program() for case in cases} == {1024}
+    assert cases[0].partial_state_bytes(num_heads=8, head_dim=128) == 16 * 8 * 130 * 4
+    assert cases[-1].partial_state_bytes(num_heads=8, head_dim=128) == 0
+    assert cases[-1].reduce_program_count(num_heads=8) == 0
+
+
+def test_equal_work_cases_reject_mismatched_program_counts() -> None:
+    with pytest.raises(ValueError, match=r"batch_size \* context_partitions"):
+        make_equal_work_cases(16384, [(1, 8), (16, None)])
+
+
+def test_equal_work_cases_reject_unsupported_split_count() -> None:
+    with pytest.raises(ValueError, match="split counts must be one of"):
+        make_equal_work_cases(16384, [(8, 2)])
 
 
 @pytest.mark.parametrize("quantile", [-0.1, 1.1])

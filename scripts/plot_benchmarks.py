@@ -17,6 +17,8 @@ PROVIDER_LABELS = {
     "paged_triton": "Paged Triton",
     "pytorch_dense_sdpa": "PyTorch dense SDPA",
     "pytorch_paged_reference": "PyTorch paged reference",
+    "paged_triton_single": "Paged Triton single",
+    "paged_triton_split": "Paged Triton split-KV",
 }
 
 SERIES_STYLES = {
@@ -198,6 +200,31 @@ def plot_batch_scaling(rows: list[dict[str, str]], output: Path) -> None:
     plt.close(figure)
 
 
+def plot_equal_work_metric(
+    rows: list[dict[str, str]],
+    *,
+    metric: str,
+    ylabel: str,
+    output: Path,
+) -> None:
+    ordered = sorted(rows, key=lambda row: int(row["batch_size"]))
+    positions = list(range(len(ordered)))
+    labels = [row["case_label"].replace(",", "\n") for row in ordered]
+    values = [float(row[metric]) for row in ordered]
+    colors = [
+        "#2a6f97" if row["provider"] == "paged_triton_split" else "#bc4749" for row in ordered
+    ]
+
+    figure, axis = plt.subplots(figsize=(9, 5.5), constrained_layout=True)
+    axis.bar(positions, values, color=colors, width=0.68)
+    axis.set_xticks(positions, labels)
+    axis.set_ylabel(ylabel)
+    axis.set_title("Equal KV work and matched main-program topology")
+    axis.grid(True, axis="y", alpha=0.25)
+    figure.savefig(output, dpi=180)
+    plt.close(figure)
+
+
 def main() -> None:
     args = make_parser().parse_args()
     rows = read_rows(args.csv_path)
@@ -206,6 +233,22 @@ def main() -> None:
     output_dir = args.output_dir or args.csv_path.parent
     output_dir.mkdir(parents=True, exist_ok=True)
     stem = args.csv_path.stem
+
+    if all(row.get("analysis_type") == "equal_work_program_matched" for row in rows):
+        plot_equal_work_metric(
+            rows,
+            metric="p50_ms",
+            ylabel="p50 latency (ms)",
+            output=output_dir / f"{stem}_latency_p50.png",
+        )
+        plot_equal_work_metric(
+            rows,
+            metric="effective_bandwidth_p50_gbps",
+            ylabel="Effective KV bandwidth (GB/s)",
+            output=output_dir / f"{stem}_bandwidth.png",
+        )
+        print(f"wrote equal-work plots to {output_dir}")
+        return
 
     plot_metric(
         rows,

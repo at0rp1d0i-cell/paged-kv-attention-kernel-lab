@@ -31,3 +31,6 @@ benchmarks/results/*
 !benchmarks/results/decode_attention_flashinfer_latency_p50_by_batch.png
 !benchmarks/results/decode_attention_flashinfer_bandwidth_by_batch.png
 !benchmarks/results/decode_attention_flashinfer_batch_scaling.png
+!benchmarks/results/split_kv_equal_work.csv
+!benchmarks/results/split_kv_equal_work_latency_p50.png
+!benchmarks/results/split_kv_equal_work_bandwidth.png
