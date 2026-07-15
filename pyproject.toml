@@ -10,8 +10,8 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "numpy>=2.0",
-    "torch==2.9.1+cu130",
-    "triton==3.5.1; platform_system == 'Linux'",
+    "torch==2.13.0+cu130",
+    "triton==3.7.1; platform_system == 'Linux'",
 ]
 
 [dependency-groups]
@@ -24,10 +24,8 @@ plot = [
     "matplotlib>=3.9",
 ]
 baseline = [
+    "cuda-toolkit[nvcc]==13.0.3",
     "flashinfer-python[cu13]==0.6.14",
-    "nvidia-cuda-crt==13.0.48",
-    "nvidia-cuda-nvcc==13.0.48",
-    "nvidia-nvvm==13.0.48",
 ]
 
 [tool.setuptools.packages.find]

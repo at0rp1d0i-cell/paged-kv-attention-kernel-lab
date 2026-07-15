@@ -10,11 +10,11 @@
 
 ### 中文
 
-> 独立实现 LLM 推理 decode 阶段的 Paged-KV Attention Triton 算子，支持 variable-length batch 与 block-table KV cache layout；以 FP32 reference 为基准构建覆盖末块未满、乱序 block table 等边界的 correctness 测试，并对比 PyTorch SDPA 与 FlashInfer。通过 program saturation 与有效带宽分析定位小 batch 长 context 的并行度瓶颈：`B=1,S=16K` 时 single-pass Paged Triton 相对 FlashInfer 慢 `9.22x`，到 `B=16` 基本收敛（RTX 5090 / FP16）。
+> 独立实现 LLM 推理 decode 阶段的 Paged-KV Attention Triton 算子，支持 variable-length batch 与 block-table KV cache layout；以 FP32 reference 为基准构建覆盖末块未满、乱序 block table 等边界的 correctness 测试，并对比 PyTorch SDPA 与 FlashInfer。通过 program saturation 与有效带宽分析定位小 batch 长 context 的并行度瓶颈：`B=1,S=16K` 时 single-pass Paged Triton 相对 FlashInfer 慢 `11.53x`，到 `B=16` 基本收敛（RTX 5090 / FP16）。
 
 ### English
 
-> Built a paged-KV attention Triton kernel for LLM decode inference with variable-length batching and block-table KV cache layout; developed FP32-reference correctness tests for partial-block and shuffled-table cases, and benchmarked against PyTorch SDPA and FlashInfer. Program-saturation and effective-bandwidth analysis exposed a `9.22x` single-pass gap to FlashInfer at `B=1,S=16K`, which disappeared near `B=16` (RTX 5090 / FP16).
+> Built a paged-KV attention Triton kernel for LLM decode inference with variable-length batching and block-table KV cache layout; developed FP32-reference correctness tests for partial-block and shuffled-table cases, and benchmarked against PyTorch SDPA and FlashInfer. Program-saturation and effective-bandwidth analysis exposed an `11.53x` single-pass gap to FlashInfer at `B=1,S=16K`, which disappeared near `B=16` (RTX 5090 / FP16).
 
 ## Split-KV Checkpoint 版本
 

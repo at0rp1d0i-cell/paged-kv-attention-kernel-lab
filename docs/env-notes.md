@@ -40,16 +40,16 @@ bash scripts/run_tests.sh
 | Item | Value |
 | --- | --- |
 | Provider | AutoDL |
-| Instance type | RTX 5090 container (`autodl-container-88e54ca00f-12d54101`) |
+| Instance type | RTX 5090 container (`autodl-container-a43440b6b9-dbab4138`) |
 | GPU | NVIDIA GeForce RTX 5090 |
 | GPU memory | 32607 MiB reported by `nvidia-smi`; 33668988928 bytes reported by PyTorch |
 | Compute capability | 12.0 |
-| Driver | 580.105.08 |
+| Driver | 580.76.05 |
 | CUDA runtime | 13.0 reported by `nvidia-smi` and PyTorch |
-| CUDA compiler / nvcc | System 12.8; pinned FlashInfer JIT compiler 13.0, V13.0.48 |
-| PyTorch | 2.9.1+cu130 |
+| CUDA compiler / nvcc | System 12.8; pinned FlashInfer JIT compiler 13.0, V13.0.88 |
+| PyTorch | 2.13.0+cu130 |
 | PyTorch CUDA | 13.0 |
-| Triton | 3.5.1 |
+| Triton | 3.7.1 |
 | Python | 3.12.3 from uv-managed `.venv` |
 | Package manager | uv 0.11.26 |
 | Dev tools | pytest 9.1.1, ruff 0.15.20, ninja 1.13.0 |
@@ -80,9 +80,9 @@ PY
 | Check | Status | Notes |
 | --- | --- | --- |
 | PyTorch CUDA tensor op | Passed | `uv run python scripts/gpu_smoke.py` completed tensor op on NVIDIA GeForce RTX 5090. |
-| Triton vector add kernel | Passed | Triton 3.5.1 JIT compiled and launched vector-add kernel. |
+| Triton vector add kernel | Passed | Triton 3.7.1 JIT compiled and launched vector-add kernel. |
 | CUDA extension compile | Passed | `torch.utils.cpp_extension.load` compiled and ran CUDA extension after installing `ninja`. |
-| CPU pytest | Passed | `bash scripts/run_tests.sh`: 24 tests passed, 6 GPU tests deselected. |
+| CPU pytest | Passed | `bash scripts/run_tests.sh`: 25 tests passed, 6 GPU tests deselected. |
 | Ruff lint | Passed | `uv run ruff check .`: all checks passed. |
 | NCU installed | Present | `/usr/local/cuda-12.8/bin/ncu`, Nsight Compute 2025.1.1.0. |
 | NCU counter permission | Blocked | `ERR_NVGPUCTRPERM` when wrapping `uv run python scripts/gpu_smoke.py`; `/proc/driver/nvidia/params` reports `RmProfilingAdminOnly: 1`. |
@@ -148,11 +148,11 @@ Validated environment:
 uv==0.11.26
 python==3.12.3
 numpy>=2.0
-torch==2.9.1+cu130
-triton==3.5.1
+torch==2.13.0+cu130
+triton==3.7.1
 cuda runtime reported by torch==13.0
 flashinfer-python[cu13]==0.6.14
-nvidia-cuda-nvcc/crt/nvvm==13.0.48 for FlashInfer JIT
+cuda-toolkit[nvcc]==13.0.3 for FlashInfer JIT
 system cuda compiler==12.8, V12.8.93
 ninja==1.13.0
 ```
@@ -168,15 +168,12 @@ Triton JIT launch, CUDA extension compile/run, and FlashInfer paged-decode corre
 
 - `ncu` counter collection is blocked by `ERR_NVGPUCTRPERM`; needs host/container permission change for full Nsight Compute profiling.
 - `nsys` is not installed in the current image.
-- `torch.profiler` reports CUDA as a supported activity, but PyTorch 2.9.1 with CUPTI 13.0.48 produces
-  an empty GPU trace on this machine. An isolated PyTorch 2.13.0 + CUPTI 13.0.85 probe records CUDA
-  kernels correctly, narrowing the issue to the current Kineto/CUPTI stack rather than the GPU,
-  permissions, or profiling script. Keep CUDA events as latency truth until the project deliberately
-  upgrades and re-baselines the full environment.
+- `torch.profiler` CUDA kernel events work with PyTorch 2.13.0 / CUPTI 13.0.85. CUDA events remain
+  the latency source of truth because profiler instrumentation perturbs microsecond kernels.
 - FlashInfer JIT must not discover the system CUDA 12.8 compiler first. The baseline group installs the
   matching CUDA 13.0 compiler components, and `flashinfer_baseline.py` selects that compiler before
   importing FlashInfer.
-- NVIDIA's CUDA 13.0.48 pip wheels use `bin/cicc` and `lib/`, while `nvcc.profile` and FlashInfer expect
+- NVIDIA's CUDA 13.0 pip wheels use `bin/cicc` and `lib/`, while `nvcc.profile` and FlashInfer expect
   traditional `nvvm/bin` and `lib64` paths. The baseline helper creates compatibility symlinks inside
   the generated `.venv`; it does not patch FlashInfer source or site-packages code.
 - Project commands now use `uv sync --locked --group dev` and `uv run`; the earlier root/base conda `pip install -e '.[dev]'` path is superseded.
